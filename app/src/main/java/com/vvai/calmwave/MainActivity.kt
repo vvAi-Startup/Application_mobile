@@ -94,56 +94,64 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // A permissão INTERNET é considerada 'normal' e é concedida automaticamente na instalação,
-        // então não precisa ser solicitada em tempo de execução. Mas é bom estar na lista
-        // para referência, embora não seja estritamente necessário aqui.
-
         if (permissionsToRequest.isNotEmpty()) {
             requestPermissionsLauncher.launch(permissionsToRequest.toTypedArray())
         }
     }
 
     private suspend fun startRecordingProcess() {
-        val cacheDir = externalCacheDir
-        if (cacheDir != null) {
-            // Cria o diretório se ele não existir
-            if (!cacheDir.exists()) {
-                cacheDir.mkdirs()
+        try {
+            val cacheDir = externalCacheDir
+            if (cacheDir != null) {
+                // Cria o diretório se ele não existir
+                if (!cacheDir.exists()) {
+                    cacheDir.mkdirs()
+                }
+                val filePath = "${cacheDir.absolutePath}/audio_record.wav"
+                audioService.startBluetoothSco(this)
+                wavRecorder.startRecording(filePath)
+                // Feedback visual ao usuário (executado na thread principal após a operação de I/O)
+                lifecycleScope.launch(Dispatchers.Main) {
+                    Toast.makeText(this@MainActivity, "Iniciando gravação em: $filePath", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                // Lidar com o caso em que o diretório de cache não está disponível
+                lifecycleScope.launch(Dispatchers.Main) {
+                    Toast.makeText(this@MainActivity, "Erro: Diretório de cache não disponível para gravação.", Toast.LENGTH_LONG).show()
+                }
             }
-            val filePath = "${cacheDir.absolutePath}/audio_record.wav"
-            audioService.startBluetoothSco(this)
-            wavRecorder.startRecording(filePath)
-            // Feedback visual ao usuário (executado na thread principal após a operação de I/O)
+        } catch (e: Exception) {
             lifecycleScope.launch(Dispatchers.Main) {
-                Toast.makeText(this@MainActivity, "Iniciando gravação em: $filePath", Toast.LENGTH_SHORT).show()
-            }
-        } else {
-            // Lidar com o caso em que o diretório de cache não está disponível
-            lifecycleScope.launch(Dispatchers.Main) {
-                Toast.makeText(this@MainActivity, "Erro: Diretório de cache não disponível para gravação.", Toast.LENGTH_LONG).show()
+                Toast.makeText(this@MainActivity, "Erro ao iniciar gravação: ${e.message}", Toast.LENGTH_LONG).show()
             }
         }
     }
 
     private suspend fun stopRecordingAndProcess() {
-        wavRecorder.stopRecording()
-        audioService.stopBluetoothSco(this)
+        try {
+            wavRecorder.stopRecording()
+            audioService.stopBluetoothSco(this)
 
-        val filePath = "${externalCacheDir?.absolutePath}/audio_record.wav"
-        // Verifica se o arquivo existe antes de tentar enviar
-        val audioFile = File(filePath)
-        if (audioFile.exists()) {
-            audioService.sendAndPlayWavFile(
-                filePath = filePath,
-                apiEndpoint = "https://your.api.endpoint" // <-- ATUALIZE ESTE ENDPOINT COM A SUA API!
-            )
-            // Feedback visual ao usuário (executado na thread principal após a operação de I/O)
-            lifecycleScope.launch(Dispatchers.Main) {
-                Toast.makeText(this@MainActivity, "Gravação parada e arquivo enviado/processado.", Toast.LENGTH_SHORT).show()
+            val filePath = "${externalCacheDir?.absolutePath}/audio_record.wav"
+            // Verifica se o arquivo existe antes de tentar enviar
+            val audioFile = File(filePath)
+            if (audioFile.exists()) {
+                audioService.sendAndPlayWavFile(
+                    filePath = filePath,
+                    apiEndpoint = "https://your.api.endpoint" // <-- ATUALIZE ESTE ENDPOINT COM A SUA API!
+                )
+                // Feedback visual ao usuário (executado na thread principal após a operação de I/O)
+                lifecycleScope.launch(Dispatchers.Main) {
+                    Toast.makeText(this@MainActivity, "Gravação parada e arquivo enviado/processado.", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                lifecycleScope.launch(Dispatchers.Main) {
+                    Toast.makeText(this@MainActivity, "Erro: Arquivo de áudio não encontrado para processamento.", Toast.LENGTH_LONG).show()
+                }
             }
-        } else {
+        } catch (e: Exception) {
             lifecycleScope.launch(Dispatchers.Main) {
-                Toast.makeText(this@MainActivity, "Erro: Arquivo de áudio não encontrado para processamento.", Toast.LENGTH_LONG).show()
+                Toast.makeText(this@MainActivity, "Erro ao parar gravação: ${e.message}", Toast.LENGTH_LONG).show()
             }
         }
     }
