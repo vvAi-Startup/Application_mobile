@@ -9,15 +9,13 @@
         android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.INTERNET" />
-    <!--
-        A permissão WRITE_EXTERNAL_STORAGE não é estritamente necessária para
-        salvar em externalCacheDir a partir do Android 10 (API 29+),
-        devido ao Scoped Storage. No entanto, se você precisar gravar
-        em diretórios públicos em versões mais antigas (até API 28),
-        ela seria necessária e deve ser solicitada em runtime.
-        Para este caso de uso específico, ela não é obrigatória.
-    -->
-    <!-- <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" /> -->
+    <!-- Permissão para salvar no diretório Downloads -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" 
+        android:maxSdkVersion="28" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" 
+        android:maxSdkVersion="32" />
+    <!-- Para Android 13+ (API 33+), usar permissões específicas -->
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
 
     <application
         android:allowBackup="true"

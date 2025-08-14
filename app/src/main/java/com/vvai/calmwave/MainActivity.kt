@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -23,6 +24,8 @@ import com.vvai.calmwave.ui.theme.CalmWaveTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.*
 
 class MainActivity : ComponentActivity() {
 
@@ -94,30 +97,83 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        // Permissões de armazenamento para salvar no Downloads
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            // Android 13+ (API 33+)
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                permissionsToRequest.add(Manifest.permission.READ_MEDIA_AUDIO)
+            }
+        } else if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
+            // Android 9 e inferior (API 28 e inferior)
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                permissionsToRequest.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            }
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                permissionsToRequest.add(Manifest.permission.READ_EXTERNAL_STORAGE)
+            }
+        }
+
         if (permissionsToRequest.isNotEmpty()) {
             requestPermissionsLauncher.launch(permissionsToRequest.toTypedArray())
         }
     }
 
+    private fun generateFileName(): String {
+        val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+        return "calmwave_recording_$timestamp.wav"
+    }
+
+    private fun getDownloadsDirectory(): File? {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            // Android 10+ usa MediaStore ou diretório público
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        } else {
+            // Android 9 e inferior
+            File(Environment.getExternalStorageDirectory(), "Download")
+        }
+    }
+
     private suspend fun startRecordingProcess() {
         try {
-            val cacheDir = externalCacheDir
-            if (cacheDir != null) {
+            val downloadsDir = getDownloadsDirectory()
+            if (downloadsDir != null && downloadsDir.exists()) {
                 // Cria o diretório se ele não existir
-                if (!cacheDir.exists()) {
-                    cacheDir.mkdirs()
+                if (!downloadsDir.exists()) {
+                    downloadsDir.mkdirs()
                 }
-                val filePath = "${cacheDir.absolutePath}/audio_record.wav"
+                
+                val fileName = generateFileName()
+                val filePath = "${downloadsDir.absolutePath}/$fileName"
+                currentRecordingPath = filePath
+                
                 audioService.startBluetoothSco(this)
                 wavRecorder.startRecording(filePath)
+                
                 // Feedback visual ao usuário (executado na thread principal após a operação de I/O)
                 lifecycleScope.launch(Dispatchers.Main) {
-                    Toast.makeText(this@MainActivity, "Iniciando gravação em: $filePath", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@MainActivity, "Iniciando gravação: $fileName", Toast.LENGTH_SHORT).show()
                 }
             } else {
-                // Lidar com o caso em que o diretório de cache não está disponível
-                lifecycleScope.launch(Dispatchers.Main) {
-                    Toast.makeText(this@MainActivity, "Erro: Diretório de cache não disponível para gravação.", Toast.LENGTH_LONG).show()
+                // Fallback para cache se Downloads não estiver disponível
+                val cacheDir = externalCacheDir
+                if (cacheDir != null) {
+                    if (!cacheDir.exists()) {
+                        cacheDir.mkdirs()
+                    }
+                    val fileName = generateFileName()
+                    val filePath = "${cacheDir.absolutePath}/$fileName"
+                    currentRecordingPath = filePath
+                    
+                    audioService.startBluetoothSco(this)
+                    wavRecorder.startRecording(filePath)
+                    
+                    lifecycleScope.launch(Dispatchers.Main) {
+                        Toast.makeText(this@MainActivity, "Salvando no cache: $fileName", Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    lifecycleScope.launch(Dispatchers.Main) {
+                        Toast.makeText(this@MainActivity, "Erro: Nenhum diretório disponível para gravação.", Toast.LENGTH_LONG).show()
+                    }
                 }
             }
         } catch (e: Exception) {
@@ -127,22 +183,25 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private var currentRecordingPath: String? = null
+
     private suspend fun stopRecordingAndProcess() {
         try {
             wavRecorder.stopRecording()
             audioService.stopBluetoothSco(this)
 
-            val filePath = "${externalCacheDir?.absolutePath}/audio_record.wav"
             // Verifica se o arquivo existe antes de tentar enviar
-            val audioFile = File(filePath)
-            if (audioFile.exists()) {
+            val audioFile = currentRecordingPath?.let { File(it) }
+            if (audioFile != null && audioFile.exists()) {
                 audioService.sendAndPlayWavFile(
-                    filePath = filePath,
+                    filePath = currentRecordingPath!!,
                     apiEndpoint = "https://your.api.endpoint" // <-- ATUALIZE ESTE ENDPOINT COM A SUA API!
                 )
+                
                 // Feedback visual ao usuário (executado na thread principal após a operação de I/O)
                 lifecycleScope.launch(Dispatchers.Main) {
-                    Toast.makeText(this@MainActivity, "Gravação parada e arquivo enviado/processado.", Toast.LENGTH_SHORT).show()
+                    val fileName = audioFile.name
+                    Toast.makeText(this@MainActivity, "Gravação salva: $fileName", Toast.LENGTH_SHORT).show()
                 }
             } else {
                 lifecycleScope.launch(Dispatchers.Main) {
