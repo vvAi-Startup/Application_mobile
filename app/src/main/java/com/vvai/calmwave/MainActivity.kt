@@ -10,10 +10,15 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Slider
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -23,6 +28,7 @@ import androidx.core.content.ContextCompat
 import com.vvai.calmwave.ui.theme.CalmWaveTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
@@ -56,19 +62,19 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             CalmWaveTheme {
-                MyAudioScreen(
+                AudioPlayerScreen(
+                    audioService = audioService,
                     onRecordClicked = {
-                        // Inicia uma corrotina na thread de I/O para evitar o bloqueio da UI
                         lifecycleScope.launch(Dispatchers.IO) {
                             startRecordingProcess()
                         }
                     },
                     onStopClicked = {
-                        // Inicia uma corrotina na thread de I/O para evitar o bloqueio da UI
                         lifecycleScope.launch(Dispatchers.IO) {
                             stopRecordingAndProcess()
                         }
-                    }
+                    },
+                    listFilesProvider = { listRecordedWavFiles() }
                 )
             }
         }
@@ -125,31 +131,33 @@ class MainActivity : ComponentActivity() {
 
     private fun getDownloadsDirectory(): File? {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            // Android 10+ usa MediaStore ou diretório público
             Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
         } else {
-            // Android 9 e inferior
             File(Environment.getExternalStorageDirectory(), "Download")
         }
+    }
+
+    private fun listRecordedWavFiles(): List<File> {
+        val dir = getDownloadsDirectory() ?: externalCacheDir
+        val files = dir?.listFiles { f -> f.isFile && f.name.endsWith(".wav", ignoreCase = true) }?.toList() ?: emptyList()
+        return files.sortedByDescending { it.lastModified() }
     }
 
     private suspend fun startRecordingProcess() {
         try {
             val downloadsDir = getDownloadsDirectory()
-            if (downloadsDir != null && downloadsDir.exists()) {
-                // Cria o diretório se ele não existir
+            if (downloadsDir != null) {
                 if (!downloadsDir.exists()) {
                     downloadsDir.mkdirs()
                 }
-                
+
                 val fileName = generateFileName()
                 val filePath = "${downloadsDir.absolutePath}/$fileName"
                 currentRecordingPath = filePath
-                
+
                 audioService.startBluetoothSco(this)
                 wavRecorder.startRecording(filePath)
-                
-                // Feedback visual ao usuário (executado na thread principal após a operação de I/O)
+
                 lifecycleScope.launch(Dispatchers.Main) {
                     Toast.makeText(this@MainActivity, "Iniciando gravação: $fileName", Toast.LENGTH_SHORT).show()
                 }
@@ -163,10 +171,10 @@ class MainActivity : ComponentActivity() {
                     val fileName = generateFileName()
                     val filePath = "${cacheDir.absolutePath}/$fileName"
                     currentRecordingPath = filePath
-                    
+
                     audioService.startBluetoothSco(this)
                     wavRecorder.startRecording(filePath)
-                    
+
                     lifecycleScope.launch(Dispatchers.Main) {
                         Toast.makeText(this@MainActivity, "Salvando no cache: $fileName", Toast.LENGTH_SHORT).show()
                     }
@@ -195,9 +203,9 @@ class MainActivity : ComponentActivity() {
             if (audioFile != null && audioFile.exists()) {
                 audioService.sendAndPlayWavFile(
                     filePath = currentRecordingPath!!,
-                    apiEndpoint = "https://your.api.endpoint" // <-- ATUALIZE ESTE ENDPOINT COM A SUA API!
+                    apiEndpoint = "http://172.20.0.3:5000/upload"
                 )
-                
+
                 // Feedback visual ao usuário (executado na thread principal após a operação de I/O)
                 lifecycleScope.launch(Dispatchers.Main) {
                     val fileName = audioFile.name
@@ -216,13 +224,41 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+private fun formatTime(milliseconds: Long): String {
+    val totalSeconds = milliseconds / 1000
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    return String.format("%02d:%02d", minutes, seconds)
+}
+
 @Composable
-fun MyAudioScreen(
+fun AudioPlayerScreen(
+    audioService: AudioService,
     onRecordClicked: () -> Unit,
-    onStopClicked: () -> Unit
+    onStopClicked: () -> Unit,
+    listFilesProvider: () -> List<File>
 ) {
     var isRecording by remember { mutableStateOf(false) }
     var statusText by remember { mutableStateOf("Pronto para gravar") }
+    var wavFiles by remember { mutableStateOf(listFilesProvider()) }
+    var isPlaying by remember { mutableStateOf(false) }
+    var currentPosition by remember { mutableStateOf(0L) }
+    var totalDuration by remember { mutableStateOf(0L) }
+    var playbackProgress by remember { mutableStateOf(0f) }
+    var isSeeking by remember { mutableStateOf(false) }
+    
+    // Atualiza o estado de reprodução periodicamente
+    LaunchedEffect(Unit) {
+        while (true) {
+            if (!isSeeking) {
+                isPlaying = audioService.isCurrentlyPlaying()
+                currentPosition = audioService.getCurrentPlaybackPosition()
+                totalDuration = audioService.getTotalPlaybackDuration()
+                playbackProgress = audioService.getPlaybackProgress()
+            }
+            delay(100) // Atualiza a cada 100ms
+        }
+    }
 
     Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
         Column(
@@ -259,6 +295,113 @@ fun MyAudioScreen(
                 enabled = isRecording // Desabilita o botão "Parar" se não estiver gravando
             ) {
                 Text(text = "Parar")
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Barra de progresso e tempo (exibe apenas quando há duração conhecida)
+            if (totalDuration > 0) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                ) {
+                    // Slider para selecionar tempo
+                    val clampedPosition = currentPosition.coerceIn(0L, totalDuration)
+                    Slider(
+                        value = clampedPosition.toFloat(),
+                        onValueChange = { newValue ->
+                            isSeeking = true
+                            val bounded = newValue.toLong().coerceIn(0L, totalDuration)
+                            currentPosition = bounded
+                        },
+                        onValueChangeFinished = {
+                            isSeeking = false
+                            val bounded = currentPosition.coerceIn(0L, totalDuration)
+                            currentPosition = bounded
+                            audioService.seekTo(bounded)
+                        },
+                        valueRange = 0f..totalDuration.toFloat(),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    // Tempo atual / tempo total
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = formatTime(currentPosition),
+                            style = androidx.compose.material3.MaterialTheme.typography.bodySmall
+                        )
+                        Text(
+                            text = formatTime(totalDuration),
+                            style = androidx.compose.material3.MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                Button(onClick = {
+                    if (audioService.isCurrentlyPlaying()) {
+                        audioService.pausePlayback()
+                    } else {
+                        audioService.resumePlayback()
+                    }
+                }) {
+                    Text(text = if (isPlaying) "Pausar" else "Continuar")
+                }
+                
+                Button(onClick = {
+                    audioService.stopPlayback()
+                }) {
+                    Text(text = "Parar")
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Text(text = "Gravações (WAV)")
+            Spacer(modifier = Modifier.height(8.dp))
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .padding(horizontal = 16.dp)
+            ) {
+                items(wavFiles) { file ->
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { 
+                                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                                    val success = audioService.playLocalWavFile(file.absolutePath)
+                                    if (!success) {
+                                        println("Erro ao reproduzir áudio")
+                                    }
+                                }
+                            }
+                            .padding(vertical = 8.dp)
+                    ) {
+                        Text(
+                            text = file.name,
+                            style = androidx.compose.material3.MaterialTheme.typography.bodyMedium
+                        )
+                        Text(
+                            text = "Tamanho: ${(file.length() / 1024)} KB • Data: ${SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date(file.lastModified()))}",
+                            style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             }
         }
     }
