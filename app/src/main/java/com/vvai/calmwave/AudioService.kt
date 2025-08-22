@@ -9,6 +9,8 @@ import kotlinx.coroutines.*
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.io.FileInputStream
 import java.io.IOException
@@ -121,7 +123,7 @@ class AudioService {
                     // Envia chunk a cada 5 segundos
                     if (currentTime - lastChunkTime >= chunkIntervalMs) {
                         if (accumulatedData.isNotEmpty()) {
-                            val requestBody = RequestBody.create(null, accumulatedData)
+                            val requestBody = accumulatedData.toRequestBody(null)
                             val request = Request.Builder()
                                 .url(apiEndpoint)
                                 .addHeader("Content-Type", "audio/wav")
@@ -159,7 +161,7 @@ class AudioService {
                 
                 // Envia qualquer dado restante
                 if (accumulatedData.isNotEmpty()) {
-                    val requestBody = RequestBody.create(null, accumulatedData)
+                    val requestBody = accumulatedData.toRequestBody(null)
                     val request = Request.Builder()
                         .url(apiEndpoint)
                         .addHeader("Content-Type", "audio/wav")
@@ -201,8 +203,11 @@ class AudioService {
             return@withContext false
         }
         
-        stopAndReleaseAudioTrack()
-        setupAudioTrack()
+        // Verifica se o arquivo mudou
+        if (currentPlayingFile != filePath) {
+            stopAndReleaseAudioTrack()
+            setupAudioTrack()
+        }
         
         isPlaying = true
         isPaused = false
@@ -229,7 +234,7 @@ class AudioService {
                 val buffer = ByteArray(CHUNK_SIZE)
                 var totalBytesRead: Long = (startTimeMs * sampleRate * 2) / 1000L
                 
-                while (isPlaying && !isPaused) {
+                while (isPlaying && !isPaused && coroutineContext.isActive) {
                     val bytesRead = fis.read(buffer)
                     if (bytesRead == -1) break
                     
@@ -289,14 +294,37 @@ class AudioService {
     fun seekTo(timeMs: Long, coroutineScope: CoroutineScope) {
         if (timeMs < 0 || timeMs > totalPlaybackDuration || currentPlayingFile == null) return
         
-        isPlaying = false
-        isPaused = false
-        
-        coroutineScope.launch {
-            // Cancelar a corrotina anterior de reprodução
-            coroutineContext.job.cancelAndJoin()
-            // Iniciar uma nova reprodução a partir da posição desejada
-            playLocalWavFile(currentPlayingFile!!, timeMs)
+        try {
+            // Armazena o estado atual de pausa
+            val wasPaused = isPaused
+            
+            // Para a reprodução atual
+            isPlaying = false
+            isPaused = false
+            
+            // Atualiza a posição atual imediatamente
+            currentPlaybackPosition = timeMs
+            
+            coroutineScope.launch {
+                try {
+                    delay(50) // Pequeno delay para garantir que o estado seja atualizado
+                    
+                    if (wasPaused) {
+                        // Se estava pausado, mantém pausado na nova posição
+                        isPaused = true
+                        isPlaying = false
+                    } else {
+                        // Se estava reproduzindo, inicia a reprodução na nova posição
+                        playLocalWavFile(currentPlayingFile!!, timeMs)
+                    }
+                } catch (e: Exception) {
+                    println("Erro durante seek: ${e.message}")
+                    e.printStackTrace()
+                }
+            }
+        } catch (e: Exception) {
+            println("Erro ao iniciar seek: ${e.message}")
+            e.printStackTrace()
         }
     }
 
@@ -311,10 +339,7 @@ class AudioService {
             val wavHeader = createWavHeader(chunkData.size)
             val fullWavData = wavHeader + chunkData
             
-            val requestBody = RequestBody.create(
-                okhttp3.MediaType.parse("audio/wav"), 
-                fullWavData
-            )
+            val requestBody = fullWavData.toRequestBody("audio/wav".toMediaType())
             
             val request = Request.Builder()
                 .url(apiEndpoint)
@@ -326,12 +351,12 @@ class AudioService {
                 .post(requestBody)
                 .build()
 
-            println("Fazendo requisição para: ${request.url()}")
-            println("Headers: ${request.headers()}")
+            println("Fazendo requisição para: ${request.url}")
+            println("Headers: ${request.headers}")
 
             client.newCall(request).execute().use { response ->
-                println("Resposta da API - Código: ${response.code()}")
-                println("Resposta da API - Mensagem: ${response.message()}")
+                println("Resposta da API - Código: ${response.code}")
+                println("Resposta da API - Mensagem: ${response.message}")
                 
                 if (response.isSuccessful) {
                     val processedAudioChunk = response.body?.bytes()
@@ -344,7 +369,7 @@ class AudioService {
                     }
                 } else {
                     val errorBody = response.body?.string()
-                    println("Falha ao enviar chunk $chunkIndex: ${response.code()} - $errorBody")
+                    println("Falha ao enviar chunk $chunkIndex: ${response.code} - $errorBody")
                 }
             }
         } catch (e: Exception) {
@@ -384,10 +409,7 @@ class AudioService {
             val wavHeader = createWavHeader(testData.size)
             val fullData = wavHeader + testData
             
-            val requestBody = RequestBody.create(
-                okhttp3.MediaType.parse("audio/wav"), 
-                fullData
-            )
+            val requestBody = fullData.toRequestBody("audio/wav".toMediaType())
             
             val request = Request.Builder()
                 .url(apiEndpoint)
@@ -401,9 +423,9 @@ class AudioService {
                 .build()
 
             client.newCall(request).execute().use { response ->
-                println("Teste API - Código: ${response.code()}")
-                println("Teste API - Mensagem: ${response.message()}")
-                println("Teste API - Headers: ${response.headers()}")
+                println("Teste API - Código: ${response.code}")
+                println("Teste API - Mensagem: ${response.message}")
+                println("Teste API - Headers: ${response.headers}")
                 
                 val responseBody = response.body?.string()
                 println("Teste API - Corpo da resposta: $responseBody")

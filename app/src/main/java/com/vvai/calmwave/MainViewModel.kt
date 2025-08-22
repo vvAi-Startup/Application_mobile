@@ -205,6 +205,14 @@ class MainViewModel(
     }
 
     fun seekTo(timeMs: Long) {
+        // Atualiza imediatamente a posição na UI para feedback visual
+        _uiState.value = _uiState.value.copy(
+            currentPosition = timeMs,
+            playbackProgress = if (_uiState.value.totalDuration > 0) {
+                timeMs.toFloat() / _uiState.value.totalDuration.toFloat()
+            } else 0f
+        )
+        
         audioService.seekTo(timeMs, viewModelScope)
     }
     
@@ -215,7 +223,7 @@ class MainViewModel(
                 statusText = "Testando conexão com API..."
             )
             
-            val apiEndpoint = "http://127.0.0.1:5000/upload"
+            val apiEndpoint = "http://10.0.2.2:5000/upload"
             val result = audioService.testAPIConnection(apiEndpoint)
             
             _uiState.value = _uiState.value.copy(
@@ -246,12 +254,11 @@ class MainViewModel(
                 // Determina se há áudio ativo (reproduzindo ou pausado)
                 val hasActiveAudio = currentPlayingFile != null && totalDuration > 0
 
-                // Atualiza o estado apenas se houver uma mudança
+                // Atualiza o estado apenas se houver uma mudança significativa
                 if (_uiState.value.isPlaying != isPlayingFromService ||
                     _uiState.value.totalDuration != totalDuration ||
-                    _uiState.value.currentPosition != currentPosition ||
-                    _uiState.value.playbackProgress != playbackProgress ||
-                    _uiState.value.hasActiveAudio != hasActiveAudio) {
+                    _uiState.value.hasActiveAudio != hasActiveAudio ||
+                    currentPlayingFile != _uiState.value.currentPlayingFile) {
 
                     // Só atualiza posição se não estiver pausado ou se estiver reproduzindo
                     val updatedPosition = if (isPlayingFromService || !_uiState.value.isPaused) {
@@ -268,6 +275,14 @@ class MainViewModel(
                         hasActiveAudio = hasActiveAudio,
                         currentPlayingFile = currentPlayingFile
                     )
+                } else if (isPlayingFromService && !_uiState.value.isPaused) {
+                    // Atualiza apenas a posição durante a reprodução (não durante seek)
+                    if (kotlin.math.abs(_uiState.value.currentPosition - currentPosition) > 50) { // Tolerância de 50ms
+                        _uiState.value = _uiState.value.copy(
+                            currentPosition = currentPosition,
+                            playbackProgress = if (totalDuration > 0) currentPosition.toFloat() / totalDuration.toFloat() else 0f
+                        )
+                    }
                 }
 
                 delay(100) // Atualiza a cada 100ms
