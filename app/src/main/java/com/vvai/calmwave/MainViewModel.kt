@@ -62,7 +62,7 @@ class MainViewModel(
 
             try {
                 // Testa a conexão com a API primeiro
-                val apiEndpoint = "http://127.0.0.1:5000/upload"
+                val apiEndpoint = "http://10.0.2.2:5000/upload"
                 val apiTestResult = audioService.testAPIConnection(apiEndpoint)
                 
                 if (!apiTestResult) {
