@@ -1,72 +1,97 @@
-# CalmWave - Gravador de Áudio
+# CalmWave - Aplicativo de Gravação e Processamento de Áudio
 
-## 📱 Sobre o App
+## Diagnóstico de Problemas de Conectividade com a API
 
-CalmWave é um aplicativo Android para gravação de áudio com suporte a Bluetooth SCO para melhor qualidade de áudio.
+### Problemas Comuns e Soluções
 
-## 🎯 Funcionalidades
+#### 1. **Servidor não está rodando**
+- **Sintoma**: "Servidor não responde" ao clicar em "Testar Conexão"
+- **Solução**: Certifique-se de que seu servidor Flask está rodando na porta 5000
+- **Comando**: `python app.py` ou `flask run --host=0.0.0.0 --port=5000`
 
-- **Gravação de Áudio**: Grava áudio em formato WAV (44.1kHz, 16-bit, mono)
-- **Suporte Bluetooth**: Usa Bluetooth SCO para melhor qualidade de áudio
-- **Salvamento Automático**: Salva gravações no diretório Downloads do dispositivo
-- **Nomes Únicos**: Cada gravação recebe um nome único com timestamp
-- **Processamento em Tempo Real**: Envia áudio para API e reproduz resposta
+#### 2. **Problema de rede no emulador**
+- **Sintoma**: "Falha na conexão com a API" 
+- **Solução**: O emulador Android usa `10.0.2.2` para acessar o localhost do host
+- **Verificação**: Use o botão "Testar Conexão" primeiro, depois "Testar API"
 
-## 📁 Local de Salvamento
+#### 3. **Configuração de CORS no servidor**
+- **Sintoma**: Erro 403 ou 405
+- **Solução**: Adicione CORS no seu servidor Flask:
+```python
+from flask_cors import CORS
 
-As gravações são salvas no **diretório Downloads** do dispositivo:
-
-- **Android 10+**: `/storage/emulated/0/Download/`
-- **Android 9 e inferior**: `/storage/emulated/0/Download/`
-
-### Formato dos Arquivos
-- **Nome**: `calmwave_recording_YYYYMMDD_HHMMSS.wav`
-- **Exemplo**: `calmwave_recording_20241201_143052.wav`
-
-## 🔧 Permissões Necessárias
-
-O app solicita automaticamente as seguintes permissões:
-
-- **RECORD_AUDIO**: Para gravação de áudio
-- **BLUETOOTH_CONNECT/SCAN**: Para conexão Bluetooth
-- **READ_MEDIA_AUDIO** (Android 13+): Para acesso a arquivos de áudio
-- **WRITE_EXTERNAL_STORAGE** (Android 9-): Para salvar no Downloads
-- **READ_EXTERNAL_STORAGE** (Android 9-): Para ler arquivos salvos
-
-## 🚀 Como Usar
-
-1. **Instalar o App**: Compile e instale o APK no dispositivo
-2. **Conceder Permissões**: O app solicitará as permissões necessárias
-3. **Conectar Bluetooth** (opcional): Para melhor qualidade de áudio
-4. **Gravar**: Toque em "Gravar" para iniciar a gravação
-5. **Parar**: Toque em "Parar" para finalizar e salvar
-
-## 📂 Estrutura do Projeto
-
-```
-app/src/main/java/com/vvai/calmwave/
-├── MainActivity.kt          # Interface principal e lógica de gravação
-├── WavRecorder.kt          # Classe para gravação de áudio WAV
-├── AudioService.kt         # Serviço de áudio e Bluetooth
-└── ui/                     # Componentes de interface
+app = Flask(__name__)
+CORS(app)  # Permite todas as origens
 ```
 
-## 🔄 Fallback
+#### 4. **Firewall bloqueando conexões**
+- **Sintoma**: Timeout ou "Connection refused"
+- **Solução**: Verifique se a porta 5000 está liberada no firewall
 
-Se o diretório Downloads não estiver disponível, o app salva no cache interno:
-- **Localização**: `/storage/emulated/0/Android/data/com.vvai.calmwave/cache/`
+### Endpoints Configurados
 
-## ⚙️ Configuração da API
+- **Emulador Android**: `http://10.0.2.2:5000/upload`
+- **Dispositivo físico**: Use o IP real da sua máquina (ex: `http://192.168.1.100:5000/upload`)
 
-Atualize o endpoint da API no arquivo `MainActivity.kt`:
+### Logs de Debug
 
-```kotlin
-apiEndpoint = "https://your.api.endpoint" // Substitua pela sua API
+O aplicativo agora fornece logs detalhados no console do Android Studio:
+- Teste de conectividade básica
+- Teste completo da API
+- Detalhes das requisições e respostas
+
+### Como Testar
+
+1. **Primeiro**: Clique em "Testar Conexão" para verificar se o servidor responde
+2. **Segundo**: Clique em "Testar API" para verificar se o endpoint `/upload` funciona
+3. **Terceiro**: Tente gravar um áudio
+
+### Exemplo de Servidor Flask Básico
+
+```python
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+
+app = Flask(__name__)
+CORS(app)
+
+@app.route('/upload', methods=['POST'])
+def upload_audio():
+    try:
+        # Recebe os dados de áudio
+        audio_data = request.get_data()
+        
+        # Processa o áudio (exemplo simples)
+        processed_data = audio_data  # Aqui você faria o processamento real
+        
+        return processed_data, 200, {'Content-Type': 'audio/wav'}
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/', methods=['GET'])
+def health_check():
+    return jsonify({'status': 'ok', 'message': 'API funcionando'}), 200
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000, debug=True)
 ```
 
-## 📋 Requisitos
+## Configurações do Projeto
 
-- Android 5.0+ (API 21+)
-- Permissões de gravação de áudio
-- Conexão com internet (para processamento via API)
-- Bluetooth (opcional, para melhor qualidade)
+### Permissões Necessárias
+- `INTERNET`: Para conexões de rede
+- `RECORD_AUDIO`: Para gravação de áudio
+- `BLUETOOTH_CONNECT` e `BLUETOOTH_SCAN`: Para áudio Bluetooth
+- `READ_MEDIA_AUDIO`: Para acesso a arquivos de áudio (Android 13+)
+
+### Configuração de Rede
+- `android:usesCleartextTraffic="true"`: Permite HTTP (não apenas HTTPS)
+- `android:networkSecurityConfig="@xml/network_security_config"`: Configuração de segurança personalizada
+
+## Como Usar
+
+1. **Gravação**: Clique em "Gravar" para iniciar a gravação
+2. **Parar**: Clique em "Parar Gravação" para finalizar
+3. **Reprodução**: Clique em um arquivo da lista para reproduzir
+4. **Controles**: Use os botões de pausar/continuar e parar durante a reprodução
+5. **Seek**: Arraste o slider para mudar a posição do áudio

@@ -53,7 +53,7 @@ class MainViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             _uiState.value = _uiState.value.copy(
                 isRecording = true,
-                statusText = "Testando API...",
+                statusText = "Iniciando gravação...",
                 isPlaying = false
             )
             
@@ -61,31 +61,29 @@ class MainViewModel(
             audioService.stopPlayback()
 
             try {
-                // Testa a conexão com a API primeiro
-                val apiEndpoint = "http://10.0.2.2:5000/upload"
-                val apiTestResult = audioService.testAPIConnection(apiEndpoint)
-                
-                if (!apiTestResult) {
-                    _uiState.value = _uiState.value.copy(
-                        isRecording = false,
-                        statusText = "Erro: Não foi possível conectar com a API"
-                    )
-                    return@launch
-                }
-                
-                _uiState.value = _uiState.value.copy(
-                    statusText = "API conectada. Iniciando gravação..."
-                )
-                
                 // Configura o callback para enviar chunks em tempo real
                 val sessionId = java.util.UUID.randomUUID().toString()
+                val apiEndpoint = "http://10.0.2.2:5000/upload"
+                
                 wavRecorder.setChunkCallback { chunkData, chunkIndex ->
                     viewModelScope.launch {
+                        println("MainViewModel: Recebendo chunk $chunkIndex do WavRecorder")
+                        
+                        // Atualiza o status para mostrar que está enviando chunk
+                        _uiState.value = _uiState.value.copy(
+                            statusText = "Enviando chunk ${chunkIndex + 1} para API..."
+                        )
+                        
                         audioService.sendChunkToAPI(
                             chunkData = chunkData,
                             sessionId = sessionId,
                             chunkIndex = chunkIndex,
                             apiEndpoint = apiEndpoint
+                        )
+                        
+                        // Atualiza o status de volta para gravação
+                        _uiState.value = _uiState.value.copy(
+                            statusText = "Gravando... (próximo chunk em 5s)"
                         )
                     }
                 }
@@ -96,7 +94,7 @@ class MainViewModel(
                 currentRecordingPath = filePath
                 
                 _uiState.value = _uiState.value.copy(
-                    statusText = "Gravando e enviando chunks..."
+                    statusText = "Gravando... (primeiro chunk será enviado em 5s)"
                 )
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -205,15 +203,28 @@ class MainViewModel(
     }
 
     fun seekTo(timeMs: Long) {
-        // Atualiza imediatamente a posição na UI para feedback visual
+        // Atualiza imediatamente a posição na UI para feedback visual instantâneo
+        val boundedTime = timeMs.coerceIn(0L, _uiState.value.totalDuration)
+        
+        // Atualiza a UI imediatamente para resposta rápida
         _uiState.value = _uiState.value.copy(
-            currentPosition = timeMs,
+            currentPosition = boundedTime,
             playbackProgress = if (_uiState.value.totalDuration > 0) {
-                timeMs.toFloat() / _uiState.value.totalDuration.toFloat()
+                boundedTime.toFloat() / _uiState.value.totalDuration.toFloat()
             } else 0f
         )
         
-        audioService.seekTo(timeMs, viewModelScope)
+        // Executa o seek no AudioService de forma assíncrona
+        viewModelScope.launch {
+            try {
+                // Pequeno delay para permitir que a UI se atualize
+                delay(50)
+                audioService.seekTo(boundedTime, viewModelScope)
+            } catch (e: Exception) {
+                println("Erro durante seek no ViewModel: ${e.message}")
+                e.printStackTrace()
+            }
+        }
     }
     
     // Função para testar a API manualmente
@@ -232,6 +243,22 @@ class MainViewModel(
         }
     }
 
+    // Função para testar conectividade básica
+    fun testBasicConnectivity() {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(
+                statusText = "Testando conectividade básica..."
+            )
+            
+            val apiEndpoint = "http://10.0.2.2:5000/upload"
+            val result = audioService.testBasicConnectivity(apiEndpoint)
+            
+            _uiState.value = _uiState.value.copy(
+                statusText = if (result) "Servidor respondendo!" else "Servidor não responde"
+            )
+        }
+    }
+
     // Funções para carregar arquivos e monitorar a reprodução
     fun loadWavFiles(listFilesProvider: () -> List<File>) {
         viewModelScope.launch {
@@ -245,47 +272,47 @@ class MainViewModel(
     private fun startPlaybackMonitor() {
         viewModelScope.launch {
             while (true) {
-                val isPlayingFromService = audioService.isCurrentlyPlaying()
-                val totalDuration = audioService.getTotalPlaybackDuration()
-                val currentPosition = audioService.getCurrentPlaybackPosition()
-                val playbackProgress = audioService.getPlaybackProgress()
-                val currentPlayingFile = audioService.getCurrentPlayingFile()
+                try {
+                    val isPlayingFromService = audioService.isCurrentlyPlaying()
+                    val totalDuration = audioService.getTotalPlaybackDuration()
+                    val currentPosition = audioService.getCurrentPlaybackPosition()
+                    val currentPlayingFile = audioService.getCurrentPlayingFile()
 
-                // Determina se há áudio ativo (reproduzindo ou pausado)
-                val hasActiveAudio = currentPlayingFile != null && totalDuration > 0
+                    // Determina se há áudio ativo (reproduzindo ou pausado)
+                    val hasActiveAudio = currentPlayingFile != null && totalDuration > 0
 
-                // Atualiza o estado apenas se houver uma mudança significativa
-                if (_uiState.value.isPlaying != isPlayingFromService ||
-                    _uiState.value.totalDuration != totalDuration ||
-                    _uiState.value.hasActiveAudio != hasActiveAudio ||
-                    currentPlayingFile != _uiState.value.currentPlayingFile) {
+                    // Atualiza o estado apenas se houver uma mudança significativa
+                    if (_uiState.value.isPlaying != isPlayingFromService ||
+                        _uiState.value.totalDuration != totalDuration ||
+                        _uiState.value.hasActiveAudio != hasActiveAudio ||
+                        currentPlayingFile != _uiState.value.currentPlayingFile) {
 
-                    // Só atualiza posição se não estiver pausado ou se estiver reproduzindo
-                    val updatedPosition = if (isPlayingFromService || !_uiState.value.isPaused) {
-                        currentPosition
-                    } else {
-                        _uiState.value.currentPosition // Mantém a posição quando pausado
-                    }
-
-                    _uiState.value = _uiState.value.copy(
-                        isPlaying = isPlayingFromService,
-                        currentPosition = updatedPosition,
-                        totalDuration = totalDuration,
-                        playbackProgress = if (totalDuration > 0) updatedPosition.toFloat() / totalDuration.toFloat() else 0f,
-                        hasActiveAudio = hasActiveAudio,
-                        currentPlayingFile = currentPlayingFile
-                    )
-                } else if (isPlayingFromService && !_uiState.value.isPaused) {
-                    // Atualiza apenas a posição durante a reprodução (não durante seek)
-                    if (kotlin.math.abs(_uiState.value.currentPosition - currentPosition) > 50) { // Tolerância de 50ms
                         _uiState.value = _uiState.value.copy(
+                            isPlaying = isPlayingFromService,
                             currentPosition = currentPosition,
-                            playbackProgress = if (totalDuration > 0) currentPosition.toFloat() / totalDuration.toFloat() else 0f
+                            totalDuration = totalDuration,
+                            playbackProgress = if (totalDuration > 0) currentPosition.toFloat() / totalDuration.toFloat() else 0f,
+                            hasActiveAudio = hasActiveAudio,
+                            currentPlayingFile = currentPlayingFile
                         )
+                    } else if (isPlayingFromService && !_uiState.value.isPaused && hasActiveAudio) {
+                        // Atualiza apenas a posição durante a reprodução normal
+                        // Usa tolerância maior durante operações de seek para evitar conflitos
+                        val positionDifference = kotlin.math.abs(_uiState.value.currentPosition - currentPosition)
+                        if (positionDifference > 200) { // Tolerância reduzida para 200ms para melhor sincronização
+                            _uiState.value = _uiState.value.copy(
+                                currentPosition = currentPosition,
+                                playbackProgress = if (totalDuration > 0) currentPosition.toFloat() / totalDuration.toFloat() else 0f
+                            )
+                        }
                     }
-                }
 
-                delay(100) // Atualiza a cada 100ms
+                    delay(500) // Atualiza a cada 500ms para melhor responsividade
+                } catch (e: Exception) {
+                    println("Erro no monitor de reprodução: ${e.message}")
+                    e.printStackTrace()
+                    delay(2000) // Em caso de erro, aguarda mais tempo
+                }
             }
         }
     }
