@@ -64,30 +64,33 @@ class WavRecorder {
                     var lastChunkTime = System.currentTimeMillis()
                     val chunkIntervalMs = 5000L // 5 segundos
 
-                                         while (isRecording) {
-                         val bytesRead = audioRecorder?.read(audioData, 0, bufferSize) ?: 0
-                         if (bytesRead > 0) {
-                             fileOutputStream.write(audioData, 0, bytesRead)
-                             
-                             // Acumula dados para envio em chunks
-                             accumulatedData += audioData.copyOf(bytesRead)
-                             
-                             val currentTime = System.currentTimeMillis()
-                             
-                             // Envia chunk a cada 5 segundos
-                             if (currentTime - lastChunkTime >= chunkIntervalMs && accumulatedData.isNotEmpty()) {
-                                 println("WavRecorder: Enviando chunk $chunkIndex com ${accumulatedData.size} bytes")
-                                 chunkCallback?.invoke(accumulatedData, chunkIndex)
-                                 chunkIndex++
-                                 lastChunkTime = currentTime
-                                 accumulatedData = ByteArray(0) // Limpa os dados acumulados
-                             }
-                         }
-                     }
+                    while (isRecording) {
+                        val bytesRead = audioRecorder?.read(audioData, 0, bufferSize) ?: 0
+                        if (bytesRead > 0) {
+                            fileOutputStream.write(audioData, 0, bytesRead)
+                            
+                            // Acumula dados para envio em chunks (mantém qualidade para IA)
+                            accumulatedData += audioData.copyOf(bytesRead)
+                            
+                            val currentTime = System.currentTimeMillis()
+                            
+                            // Envia chunk a cada 5 segundos (mantém funcionalidade para IA futura)
+                            if (currentTime - lastChunkTime >= chunkIntervalMs && accumulatedData.isNotEmpty()) {
+                                println("WavRecorder: Preparando chunk $chunkIndex com ${accumulatedData.size} bytes")
+                                // TODO: API será implementada futuramente
+                                // chunkCallback?.invoke(accumulatedData, chunkIndex)
+                                chunkIndex++
+                                lastChunkTime = currentTime
+                                accumulatedData = ByteArray(0) // Limpa os dados acumulados
+                            }
+                        }
+                    }
                     
                     // Envia qualquer dado restante
                     if (accumulatedData.isNotEmpty()) {
-                        chunkCallback?.invoke(accumulatedData, chunkIndex)
+                        println("WavRecorder: Dados finais preparados com ${accumulatedData.size} bytes")
+                        // TODO: API será implementada futuramente
+                        // chunkCallback?.invoke(accumulatedData, chunkIndex)
                     }
                 }
             } catch (e: Exception) {

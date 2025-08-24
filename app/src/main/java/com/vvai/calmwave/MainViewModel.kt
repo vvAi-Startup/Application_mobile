@@ -34,11 +34,15 @@ class MainViewModel(
         val playbackProgress: Float = 0f,
         val wavFiles: List<File> = emptyList(),
         val currentPlayingFile: String? = null,
-        val hasActiveAudio: Boolean = false // Para manter a barra visível mesmo quando pausado
+        val hasActiveAudio: Boolean = false, // Para manter a barra visível mesmo quando pausado
+        val recordingDuration: Long = 0L // Duração da gravação em milissegundos
     )
 
     // Variável para armazenar o caminho do arquivo de gravação atual
     private var currentRecordingPath: String? = null
+    
+    // Variável para rastrear o tempo de gravação
+    private var recordingStartTime: Long = 0L
 
     // Bloco de inicialização para o ViewModel
     init {
@@ -51,84 +55,87 @@ class MainViewModel(
     // Funções de Gravação e Processamento
     fun startRecording(filePath: String) {
         viewModelScope.launch(Dispatchers.IO) {
+            // Inicializa o tempo de gravação
+            recordingStartTime = System.currentTimeMillis()
+            
             _uiState.value = _uiState.value.copy(
                 isRecording = true,
-                statusText = "Testando API...",
-                isPlaying = false
+                statusText = "Iniciando gravação...",
+                isPlaying = false,
+                recordingDuration = 0L
             )
             
             // Para qualquer reprodução anterior
             audioService.stopPlayback()
 
             try {
-                // Testa a conexão com a API primeiro
-                val apiEndpoint = "http://10.0.2.2:5000/upload"
-                val apiTestResult = audioService.testAPIConnection(apiEndpoint)
-                
-                if (!apiTestResult) {
-                    _uiState.value = _uiState.value.copy(
-                        isRecording = false,
-                        statusText = "Erro: Não foi possível conectar com a API"
-                    )
-                    return@launch
-                }
-                
-                _uiState.value = _uiState.value.copy(
-                    statusText = "API conectada. Iniciando gravação..."
-                )
-                
-                // Configura o callback para enviar chunks em tempo real
-                val sessionId = java.util.UUID.randomUUID().toString()
-                wavRecorder.setChunkCallback { chunkData, chunkIndex ->
-                    viewModelScope.launch {
-                        audioService.sendChunkToAPI(
-                            chunkData = chunkData,
-                            sessionId = sessionId,
-                            chunkIndex = chunkIndex,
-                            apiEndpoint = apiEndpoint
-                        )
-                    }
-                }
-                
-                // Inicia o bluetooth SCO e a gravação
-                audioService.startBluetoothSco()
+                // Inicia a gravação
                 wavRecorder.startRecording(filePath)
                 currentRecordingPath = filePath
                 
                 _uiState.value = _uiState.value.copy(
-                    statusText = "Gravando e enviando chunks..."
+                    statusText = "Gravando... (preparando chunks para IA)"
                 )
+                
+                // TODO: API será implementada futuramente
+                // Configura o callback para enviar chunks em tempo real
+                // val sessionId = java.util.UUID.randomUUID().toString()
+                // wavRecorder.setChunkCallback { chunkData, chunkIndex ->
+                //     viewModelScope.launch {
+                //         audioService.sendChunkToAPI(
+                //             chunkData = chunkData,
+                //             sessionId = sessionId,
+                //             chunkIndex = chunkIndex,
+                //             apiEndpoint = "http://127.0.0.1:5000/upload"
+                //         )
+                //     }
+                // }
+                
             } catch (e: Exception) {
                 e.printStackTrace()
                 _uiState.value = _uiState.value.copy(
                     isRecording = false,
                     statusText = "Erro ao iniciar gravação: ${e.message}"
                 )
-                audioService.stopBluetoothSco()
             }
         }
     }
 
     fun stopRecordingAndProcess(apiEndpoint: String) {
         viewModelScope.launch(Dispatchers.IO) {
+            // Para o rastreamento do tempo de gravação
+            recordingStartTime = 0L
+            
             _uiState.value = _uiState.value.copy(
                 isRecording = false,
                 isProcessing = true,
-                statusText = "Parando gravação e processando..."
+                statusText = "Parando gravação e processando...",
+                recordingDuration = 0L
             )
             try {
                 wavRecorder.stopRecording()
-                audioService.stopBluetoothSco()
 
                 val audioFile = currentRecordingPath?.let { File(it) }
                 if (audioFile?.exists() == true) {
-                    audioService.sendAndPlayWavFile(
-                        filePath = audioFile.absolutePath,
-                        apiEndpoint = apiEndpoint
-                    )
                     _uiState.value = _uiState.value.copy(
                         statusText = "Gravação processada com sucesso!"
                     )
+                    
+                    // TODO: API será implementada futuramente
+                    // audioService.sendAndPlayWavFile(
+                    //     filePath = audioFile.absolutePath,
+                    //     apiEndpoint = apiEndpoint
+                    // )
+                    
+                    // Recarrega a lista de arquivos após o processamento
+                    loadWavFiles { 
+                        val recordingsDir = File(context.getExternalFilesDir(null), "recordings")
+                        if (recordingsDir.exists()) {
+                            recordingsDir.listFiles()?.filter { it.extension == "wav" }?.toList() ?: emptyList()
+                        } else {
+                            emptyList()
+                        }
+                    }
                 } else {
                     _uiState.value = _uiState.value.copy(
                         statusText = "Erro: Arquivo não encontrado para processamento."
@@ -143,8 +150,6 @@ class MainViewModel(
                 _uiState.value = _uiState.value.copy(
                     isProcessing = false
                 )
-                // Recarrega a lista de arquivos após o processamento
-                loadWavFiles { emptyList() } // Será atualizado pelo MainActivity
             }
         }
     }
@@ -254,11 +259,19 @@ class MainViewModel(
                 // Determina se há áudio ativo (reproduzindo ou pausado)
                 val hasActiveAudio = currentPlayingFile != null && totalDuration > 0
 
+                // Calcula o tempo de gravação se estiver gravando
+                val recordingDuration = if (_uiState.value.isRecording && recordingStartTime > 0) {
+                    System.currentTimeMillis() - recordingStartTime
+                } else {
+                    0L
+                }
+
                 // Atualiza o estado apenas se houver uma mudança significativa
                 if (_uiState.value.isPlaying != isPlayingFromService ||
                     _uiState.value.totalDuration != totalDuration ||
                     _uiState.value.hasActiveAudio != hasActiveAudio ||
-                    currentPlayingFile != _uiState.value.currentPlayingFile) {
+                    currentPlayingFile != _uiState.value.currentPlayingFile ||
+                    _uiState.value.recordingDuration != recordingDuration) {
 
                     // Só atualiza posição se não estiver pausado ou se estiver reproduzindo
                     val updatedPosition = if (isPlayingFromService || !_uiState.value.isPaused) {
@@ -273,7 +286,8 @@ class MainViewModel(
                         totalDuration = totalDuration,
                         playbackProgress = if (totalDuration > 0) updatedPosition.toFloat() / totalDuration.toFloat() else 0f,
                         hasActiveAudio = hasActiveAudio,
-                        currentPlayingFile = currentPlayingFile
+                        currentPlayingFile = currentPlayingFile,
+                        recordingDuration = recordingDuration
                     )
                 } else if (isPlayingFromService && !_uiState.value.isPaused) {
                     // Atualiza apenas a posição durante a reprodução (não durante seek)

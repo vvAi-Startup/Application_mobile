@@ -1,3 +1,18 @@
 <resources>
     <string name="app_name">CalmWave</string>
+    
+    <!-- Tela de Gravação -->
+    <string name="recording_title">Gravação</string>
+    <string name="app_name_title">Calm Wave</string>
+    <string name="recording_subtitle">Acompanhe a sua gravação</string>
+    <string name="start_button">Iniciar</string>
+    <string name="stop_button">Parar</string>
+    <string name="playlists_nav">Playlists</string>
+    <string name="recording_nav">Gravação</string>
+    
+    <!-- Tela de Playlists -->
+    <string name="playlists_title">Playlists</string>
+    <string name="audios_filter">Áudios</string>
+    <string name="playlists_filter">Playlists</string>
+    <string name="search_placeholder">Pesquisar áudios...</string>
 </resources>

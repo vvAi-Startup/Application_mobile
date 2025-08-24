@@ -23,6 +23,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.vvai.calmwave.ui.theme.CalmWaveTheme
+import com.vvai.calmwave.ui.theme.screen.RecordingScreen
+import com.vvai.calmwave.ui.theme.screen.PlaylistsScreen
+import com.vvai.calmwave.ui.theme.screen.AudioItem
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
@@ -58,62 +61,135 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             CalmWaveTheme {
-                // 3. Coleta o estado da UI do ViewModel e passa para o Composable
+                // 3. Coleta o estado da UI do ViewModel
                 val uiState by viewModel.uiState.collectAsState()
 
                 // 4. Carrega a lista de arquivos ao iniciar a tela
-                // O LaunchedEffect executa a lógica apenas uma vez
                 val context = LocalContext.current
                 LaunchedEffect(Unit) {
                     val listFilesProvider: () -> List<File> = { listRecordedWavFiles() }
                     viewModel.loadWavFiles(listFilesProvider)
                 }
 
-                AudioPlayerScreen(
-                    uiState = uiState,
-                    onRecordClicked = {
-                        val downloadsDir = getDownloadsDirectory()
-                        val fileName = generateFileName()
-                        val filePath = if (downloadsDir?.exists() == true) {
-                            "${downloadsDir.absolutePath}/$fileName"
-                        } else {
-                            val cacheDir = externalCacheDir
-                            cacheDir?.mkdirs()
-                            "${cacheDir?.absolutePath}/$fileName"
-                        }
-                        if (filePath != "null/null") {
-                            viewModel.startRecording(filePath)
-                        } else {
-                            Toast.makeText(context, "Erro: Não foi possível obter o diretório de gravação.", Toast.LENGTH_LONG).show()
-                        }
-                    },
-                    onStopClicked = {
-                        viewModel.stopRecordingAndProcess(apiEndpoint = "http://127.0.0.1:5000/upload")
-                    },
-                    onTestAPIClicked = {
-                        viewModel.testAPI()
-                    },
-                    onFileClicked = { filePath ->
-                        viewModel.playAudioFile(filePath)
-                    },
-                    onPauseResumeClicked = {
-                        if (uiState.isPlaying) {
-                            viewModel.pausePlayback()
-                        } else {
-                            viewModel.resumePlayback()
-                        }
-                    },
-                    onStopPlaybackClicked = {
-                        viewModel.stopPlayback()
-                    },
-                    onSeek = { timeMs ->
-                        viewModel.seekTo(timeMs)
-                    },
-                    onRefreshFiles = {
-                        val listFilesProvider: () -> List<File> = { listRecordedWavFiles() }
-                        viewModel.loadWavFiles(listFilesProvider)
+                // Estado para controlar a navegação
+                var currentScreen by remember { mutableStateOf("recording") }
+                
+                // Lista de áudios reais gravados para a tela de playlists
+                val audioList = remember(uiState.wavFiles) {
+                    uiState.wavFiles.map { file ->
+                        AudioItem(
+                            id = file.absolutePath,
+                            name = file.name.replace(".wav", ""),
+                            duration = "", // TODO: Implementar duração real
+                            date = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date(file.lastModified())),
+                            filePath = file.absolutePath
+                        )
                     }
-                )
+                }
+
+                when (currentScreen) {
+                    "recording" -> {
+                        // Tela de gravação
+                        RecordingScreen(
+                            onStartRecording = {
+                                try {
+                                    // Verifica permissões
+                                    if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                                        Toast.makeText(context, "Permissão de gravação necessária", Toast.LENGTH_LONG).show()
+                                        return@RecordingScreen
+                                    }
+                                    
+                                    val recordingsDir = File(context.getExternalFilesDir(null), "recordings")
+                                    if (!recordingsDir.exists()) {
+                                        recordingsDir.mkdirs()
+                                    }
+                                    
+                                    val fileName = generateFileName()
+                                    val filePath = "${recordingsDir.absolutePath}/$fileName"
+                                    
+                                    println("Iniciando gravação em: $filePath")
+                                    println("Diretório existe: ${recordingsDir.exists()}")
+                                    println("Diretório pode escrever: ${recordingsDir.canWrite()}")
+                                    
+                                    viewModel.startRecording(filePath)
+                                } catch (e: Exception) {
+                                    println("Erro ao iniciar gravação: ${e.message}")
+                                    e.printStackTrace()
+                                    Toast.makeText(context, "Erro ao iniciar gravação: ${e.message}", Toast.LENGTH_LONG).show()
+                                }
+                            },
+                            onStopRecording = {
+                                try {
+                                    println("Parando gravação...")
+                                    viewModel.stopRecordingAndProcess(apiEndpoint = "http://127.0.0.1:5000/upload")
+                                    
+                                    // Recarrega a lista de arquivos após parar a gravação
+                                    val listFilesProvider: () -> List<File> = { listRecordedWavFiles() }
+                                    viewModel.loadWavFiles(listFilesProvider)
+                                    
+                                    println("Gravação parada, arquivos recarregados")
+                                } catch (e: Exception) {
+                                    println("Erro ao parar gravação: ${e.message}")
+                                    e.printStackTrace()
+                                    Toast.makeText(context, "Erro ao parar gravação: ${e.message}", Toast.LENGTH_LONG).show()
+                                }
+                            },
+                            onPausePlay = {
+                                // TODO: Implementar pausa da gravação
+                                Toast.makeText(context, "Funcionalidade de pausar gravação em desenvolvimento", Toast.LENGTH_SHORT).show()
+                            },
+                            onPlaylistsClick = {
+                                currentScreen = "playlists"
+                            },
+                            onHomeClick = {
+                                // TODO: Implementar navegação para home
+                                Toast.makeText(context, "Home em desenvolvimento", Toast.LENGTH_SHORT).show()
+                            },
+                            onRecordingClick = {
+                                // Já estamos na tela de gravação
+                            },
+                            isRecording = uiState.isRecording,
+                            recordingTime = formatRecordingTime(uiState.recordingDuration)
+                        )
+                    }
+                    "playlists" -> {
+                        // Tela de playlists
+                        PlaylistsScreen(
+                            onPlaylistsClick = {
+                                // Já estamos na tela de playlists
+                            },
+                            onHomeClick = {
+                                // TODO: Implementar navegação para home
+                                Toast.makeText(context, "Home em desenvolvimento", Toast.LENGTH_SHORT).show()
+                            },
+                            onRecordingClick = {
+                                currentScreen = "recording"
+                            },
+                            onAudioItemClick = { audioId ->
+                                // Reproduzir o áudio selecionado
+                                viewModel.playAudioFile(audioId)
+                                Toast.makeText(context, "Reproduzindo áudio...", Toast.LENGTH_SHORT).show()
+                            },
+                            onPauseResume = {
+                                if (uiState.isPlaying) {
+                                    viewModel.pausePlayback()
+                                } else {
+                                    viewModel.resumePlayback()
+                                }
+                            },
+                            onSeek = { position ->
+                                viewModel.seekTo(position)
+                            },
+                            currentPlayingAudio = uiState.currentPlayingFile?.let { fileName ->
+                                File(fileName).name.replace(".wav", "")
+                            },
+                            isPlaying = uiState.isPlaying,
+                            audioList = audioList,
+                            currentPosition = uiState.currentPosition,
+                            totalDuration = uiState.totalDuration
+                        )
+                    }
+                }
             }
         }
     }
@@ -168,9 +244,22 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun listRecordedWavFiles(): List<File> {
-        val dir = getDownloadsDirectory() ?: externalCacheDir
-        val files = dir?.listFiles { f -> f.isFile && f.name.endsWith(".wav", ignoreCase = true) }?.toList() ?: emptyList()
+        // Usar diretório específico para gravações dentro do app
+        val recordingsDir = File(getExternalFilesDir(null), "recordings")
+        if (!recordingsDir.exists()) {
+            recordingsDir.mkdirs()
+        }
+        
+        val files = recordingsDir.listFiles { file -> file.isFile && file.name.endsWith(".wav", ignoreCase = true) }?.toList() ?: emptyList()
         return files.sortedByDescending { it.lastModified() }
+    }
+
+    private fun formatRecordingTime(durationMs: Long): String {
+        val totalSeconds = durationMs / 1000
+        val hours = totalSeconds / 3600
+        val minutes = (totalSeconds % 3600) / 60
+        val seconds = totalSeconds % 60
+        return String.format("%02d:%02d:%02d", hours, minutes, seconds)
     }
 }
 
