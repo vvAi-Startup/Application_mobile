@@ -69,16 +69,15 @@ class WavRecorder {
                         if (bytesRead > 0) {
                             fileOutputStream.write(audioData, 0, bytesRead)
                             
-                            // Acumula dados para envio em chunks (mantém qualidade para IA)
+                            // Acumula dados para envio em chunks
                             accumulatedData += audioData.copyOf(bytesRead)
                             
                             val currentTime = System.currentTimeMillis()
                             
-                            // Envia chunk a cada 5 segundos (mantém funcionalidade para IA futura)
+                            // Envia chunk a cada 5 segundos
                             if (currentTime - lastChunkTime >= chunkIntervalMs && accumulatedData.isNotEmpty()) {
-                                println("WavRecorder: Preparando chunk $chunkIndex com ${accumulatedData.size} bytes")
-                                // TODO: API será implementada futuramente
-                                // chunkCallback?.invoke(accumulatedData, chunkIndex)
+                                println("WavRecorder: Enviando chunk $chunkIndex com ${accumulatedData.size} bytes")
+                                chunkCallback?.invoke(accumulatedData, chunkIndex)
                                 chunkIndex++
                                 lastChunkTime = currentTime
                                 accumulatedData = ByteArray(0) // Limpa os dados acumulados
@@ -88,9 +87,7 @@ class WavRecorder {
                     
                     // Envia qualquer dado restante
                     if (accumulatedData.isNotEmpty()) {
-                        println("WavRecorder: Dados finais preparados com ${accumulatedData.size} bytes")
-                        // TODO: API será implementada futuramente
-                        // chunkCallback?.invoke(accumulatedData, chunkIndex)
+                        chunkCallback?.invoke(accumulatedData, chunkIndex)
                     }
                 }
             } catch (e: Exception) {

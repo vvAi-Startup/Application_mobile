@@ -6,6 +6,7 @@ import android.media.AudioManager
 import android.media.AudioTrack
 import android.media.AudioTrack.MODE_STREAM
 import kotlinx.coroutines.*
+import kotlinx.coroutines.Job
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
@@ -79,10 +80,30 @@ class AudioService {
     }
 
     private fun stopAndReleaseAudioTrack() {
-        try { audioTrack?.stop() } catch (e: IllegalStateException) {
+        // Limpa o estado de seek primeiro
+        seekInProgress = false
+        seekCoroutine?.cancel()
+        seekCoroutine = null
+        seekDirection = 0
+        
+        // Limpa o buffer circular
+        audioBuffer.clear()
+        bufferStartPosition = 0L
+        
+        try { 
+            audioTrack?.stop() 
+        } catch (e: IllegalStateException) {
+            e.printStackTrace()
+        } catch (e: Exception) {
             e.printStackTrace()
         }
-        audioTrack?.release()
+        
+        try {
+            audioTrack?.release()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        
         audioTrack = null
         isPlaying = false
         isPaused = false
@@ -123,30 +144,52 @@ class AudioService {
                     // Envia chunk a cada 5 segundos
                     if (currentTime - lastChunkTime >= chunkIntervalMs) {
                         if (accumulatedData.isNotEmpty()) {
-                            val requestBody = accumulatedData.toRequestBody(null)
-                            val request = Request.Builder()
-                                .url(apiEndpoint)
-                                .addHeader("Content-Type", "audio/wav")
-                                .addHeader("X-Session-ID", sessionId)
-                                .addHeader("X-Chunk-Index", chunkIndex.toString())
-                                .addHeader("X-Chunk-Timestamp", currentTime.toString())
-                                .post(requestBody)
-                                .build()
-
+                            // Cria um arquivo temporário para enviar como multipart/form-data
+                            val tempFile = java.io.File.createTempFile("chunk_${chunkIndex}_", ".wav")
+                            tempFile.writeBytes(accumulatedData)
+                            
                             try {
-                                client.newCall(request).execute().use { response ->
-                                    if (response.isSuccessful) {
-                                        val processedAudioChunk = response.body?.bytes()
-                                        if (processedAudioChunk != null) {
-                                            audioTrack?.write(processedAudioChunk, 0, processedAudioChunk.size)
-                                            println("Chunk $chunkIndex enviado e reproduzido com sucesso.")
+                                val requestBody = okhttp3.MultipartBody.Builder()
+                                    .setType(okhttp3.MultipartBody.FORM)
+                                    .addFormDataPart(
+                                        "audio",
+                                        "chunk_${chunkIndex}.wav",
+                                        okhttp3.RequestBody.create(
+                                            "audio/wav".toMediaType(),
+                                            tempFile
+                                        )
+                                    )
+                                    .build()
+                                
+                                val request = Request.Builder()
+                                    .url(apiEndpoint)
+                                    .addHeader("X-Session-ID", sessionId)
+                                    .addHeader("X-Chunk-Index", chunkIndex.toString())
+                                    .addHeader("X-Chunk-Timestamp", currentTime.toString())
+                                    .post(requestBody)
+                                    .build()
+
+                                try {
+                                    client.newCall(request).execute().use { response ->
+                                        if (response.isSuccessful) {
+                                            val responseBody = response.body?.string()
+                                            println("Chunk $chunkIndex enviado com sucesso. Resposta: $responseBody")
+                                            
+                                            // Se a API retornar áudio processado, reproduz
+                                            val processedAudioBytes = response.body?.bytes()
+                                            if (processedAudioBytes != null && processedAudioBytes.isNotEmpty()) {
+                                                audioTrack?.write(processedAudioBytes, 0, processedAudioBytes.size)
+                                                println("Áudio processado reproduzido para chunk $chunkIndex")
+                                            }
+                                        } else {
+                                            println("Falha ao enviar chunk $chunkIndex: ${response.code}")
                                         }
-                                    } else {
-                                        println("Falha ao enviar chunk $chunkIndex: ${response.code}")
                                     }
+                                } catch (e: Exception) {
+                                    println("Erro ao enviar chunk $chunkIndex: ${e.message}")
                                 }
-                            } catch (e: Exception) {
-                                println("Erro ao enviar chunk $chunkIndex: ${e.message}")
+                            } finally {
+                                tempFile.delete()
                             }
                             
                             chunkIndex++
@@ -161,31 +204,51 @@ class AudioService {
                 
                 // Envia qualquer dado restante
                 if (accumulatedData.isNotEmpty()) {
-                    val requestBody = accumulatedData.toRequestBody(null)
-                    val request = Request.Builder()
-                        .url(apiEndpoint)
-                        .addHeader("Content-Type", "audio/wav")
-                        .addHeader("X-Session-ID", sessionId)
-                        .addHeader("X-Chunk-Index", chunkIndex.toString())
-                        .addHeader("X-Chunk-Timestamp", System.currentTimeMillis().toString())
-                        .addHeader("X-Chunk-Final", "true")
-                        .post(requestBody)
-                        .build()
-
+                    val tempFile = java.io.File.createTempFile("chunk_final_", ".wav")
+                    tempFile.writeBytes(accumulatedData)
+                    
                     try {
-                        client.newCall(request).execute().use { response ->
-                            if (response.isSuccessful) {
-                                val processedAudioChunk = response.body?.bytes()
-                                if (processedAudioChunk != null) {
-                                    audioTrack?.write(processedAudioChunk, 0, processedAudioChunk.size)
-                                    println("Chunk final $chunkIndex enviado e reproduzido com sucesso.")
+                        val requestBody = okhttp3.MultipartBody.Builder()
+                            .setType(okhttp3.MultipartBody.FORM)
+                            .addFormDataPart(
+                                "audio",
+                                "chunk_final.wav",
+                                okhttp3.RequestBody.create(
+                                    "audio/wav".toMediaType(),
+                                    tempFile
+                                )
+                            )
+                            .build()
+                        
+                        val request = Request.Builder()
+                            .url(apiEndpoint)
+                            .addHeader("X-Session-ID", sessionId)
+                            .addHeader("X-Chunk-Index", chunkIndex.toString())
+                            .addHeader("X-Chunk-Timestamp", System.currentTimeMillis().toString())
+                            .addHeader("X-Chunk-Final", "true")
+                            .post(requestBody)
+                            .build()
+
+                        try {
+                            client.newCall(request).execute().use { response ->
+                                if (response.isSuccessful) {
+                                    val responseBody = response.body?.string()
+                                    println("Chunk final $chunkIndex enviado com sucesso. Resposta: $responseBody")
+                                    
+                                    val processedAudioBytes = response.body?.bytes()
+                                    if (processedAudioBytes != null && processedAudioBytes.isNotEmpty()) {
+                                        audioTrack?.write(processedAudioBytes, 0, processedAudioBytes.size)
+                                        println("Áudio processado reproduzido para chunk final $chunkIndex")
+                                    }
+                                } else {
+                                    println("Falha ao enviar chunk final $chunkIndex: ${response.code}")
                                 }
-                            } else {
-                                println("Falha ao enviar chunk final $chunkIndex: ${response.code}")
                             }
+                        } catch (e: Exception) {
+                            println("Erro ao enviar chunk final $chunkIndex: ${e.message}")
                         }
-                    } catch (e: Exception) {
-                        println("Erro ao enviar chunk final $chunkIndex: ${e.message}")
+                    } finally {
+                        tempFile.delete()
                     }
                 }
             }
@@ -235,10 +298,88 @@ class AudioService {
                 var totalBytesRead: Long = (startTimeMs * sampleRate * 2) / 1000L
                 
                 while (isPlaying && !isPaused && coroutineContext.isActive) {
+                    // Verifica se há um seek pendente
+                    if (seekInProgress && targetSeekPosition != currentPlaybackPosition) {
+                        println("Seek detectado durante reprodução: ${targetSeekPosition}ms")
+                        
+                        // Calcula quantos bytes pular (pode ser positivo ou negativo)
+                        val seekBytes = (targetSeekPosition - currentPlaybackPosition) * sampleRate * 2 / 1000L
+                        
+                        if (seekBytes != 0L) {
+                            if (seekBytes > 0) {
+                                // Seek para frente: pula bytes
+                                val skipped = fis.skip(seekBytes)
+                                totalBytesRead += skipped
+                                currentPlaybackPosition = targetSeekPosition
+                                println("Seek para frente: pulou $skipped bytes, nova posição: ${currentPlaybackPosition}ms")
+                            } else {
+                                // Seek para trás: reinicia o arquivo na nova posição
+                                println("Seek para trás detectado, reiniciando arquivo na posição ${targetSeekPosition}ms")
+                                
+                                // Fecha o stream atual
+                                fis.close()
+                                
+                                // Abre um novo stream na posição desejada
+                                val newFis = FileInputStream(file)
+                                newFis.skip(44) // Pula o cabeçalho WAV
+                                
+                                // Pula para a posição desejada
+                                val bytesToSkip = (targetSeekPosition * sampleRate * 2) / 1000L
+                                var remaining = bytesToSkip
+                                while (remaining > 0) {
+                                    val skippedNow = newFis.skip(remaining)
+                                    if (skippedNow <= 0) break
+                                    remaining -= skippedNow
+                                }
+                                
+                                // Atualiza as variáveis de controle
+                                currentPlaybackPosition = targetSeekPosition
+                                totalBytesRead = bytesToSkip
+                                
+                                // Continua a reprodução com o novo stream
+                                while (isPlaying && !isPaused && coroutineContext.isActive) {
+                                    val bytesRead = newFis.read(buffer)
+                                    if (bytesRead == -1) break
+                                    
+                                    if (bytesRead > 0) {
+                                        // Adiciona ao buffer circular
+                                        val chunkCopy = buffer.copyOf(bytesRead)
+                                        audioBuffer.add(chunkCopy)
+                                        
+                                        // Remove chunks antigos se o buffer estiver cheio
+                                        if (audioBuffer.size > bufferSize) {
+                                            audioBuffer.removeAt(0)
+                                            bufferStartPosition += (CHUNK_SIZE * 1000L) / (sampleRate * 2)
+                                        }
+                                        
+                                        audioTrack?.write(buffer, 0, bytesRead)
+                                        totalBytesRead += bytesRead
+                                        currentPlaybackPosition = (totalBytesRead * 1000L) / (sampleRate * 2)
+                                    }
+                                }
+                                
+                                // Fecha o novo stream
+                                newFis.close()
+                                break
+                            }
+                        }
+                        seekInProgress = false
+                    }
+                    
                     val bytesRead = fis.read(buffer)
                     if (bytesRead == -1) break
                     
                     if (bytesRead > 0) {
+                        // Adiciona ao buffer circular
+                        val chunkCopy = buffer.copyOf(bytesRead)
+                        audioBuffer.add(chunkCopy)
+                        
+                        // Remove chunks antigos se o buffer estiver cheio
+                        if (audioBuffer.size > bufferSize) {
+                            audioBuffer.removeAt(0)
+                            bufferStartPosition += (CHUNK_SIZE * 1000L) / (sampleRate * 2)
+                        }
+                        
                         audioTrack?.write(buffer, 0, bytesRead)
                         totalBytesRead += bytesRead
                         currentPlaybackPosition = (totalBytesRead * 1000L) / (sampleRate * 2)
@@ -266,6 +407,17 @@ class AudioService {
         if (currentPlayingFile != null && isPaused) {
             isPaused = false
             isPlaying = true
+            
+            // Limpa qualquer seek pendente ao retomar
+            seekInProgress = false
+            seekCoroutine?.cancel()
+            seekCoroutine = null
+            seekDirection = 0
+            
+            // Limpa o buffer ao retomar
+            audioBuffer.clear()
+            bufferStartPosition = 0L
+            
             coroutineScope.launch {
                 playLocalWavFile(currentPlayingFile!!, currentPlaybackPosition)
             }
@@ -291,40 +443,103 @@ class AudioService {
         }
     }
 
+    // Sistema de seek inteligente que não interrompe a reprodução
+    private var seekInProgress = false
+    private var targetSeekPosition = 0L
+    private var seekCoroutine: Job? = null
+    private var seekDirection = 0 // -1 para trás, 0 para frente, 1 para frente
+    
+    // Buffer circular para seek para trás
+    private val audioBuffer = mutableListOf<ByteArray>()
+    private val bufferSize = 50 // Mantém 50 chunks em memória
+    private var bufferStartPosition = 0L
+    
     fun seekTo(timeMs: Long, coroutineScope: CoroutineScope) {
         if (timeMs < 0 || timeMs > totalPlaybackDuration || currentPlayingFile == null) return
         
         try {
-            // Armazena o estado atual de pausa
-            val wasPaused = isPaused
+            println("=== SEEK INICIADO ===")
+            println("Posição solicitada: ${timeMs}ms")
+            println("Posição atual: ${currentPlaybackPosition}ms")
+            println("Estado atual - isPlaying: $isPlaying, isPaused: $isPaused")
+            println("Arquivo atual: $currentPlayingFile")
             
-            // Para a reprodução atual
-            isPlaying = false
-            isPaused = false
+            // Cancela qualquer seek anterior em progresso
+            seekCoroutine?.cancel()
             
-            // Atualiza a posição atual imediatamente
+            // Se já há um seek em progresso, aguarda um pouco
+            if (seekInProgress) {
+                println("Seek anterior em progresso, aguardando...")
+                coroutineScope.launch {
+                    delay(100)
+                    seekTo(timeMs, coroutineScope)
+                }
+                return
+            }
+            
+            // Atualiza a posição atual imediatamente para feedback visual
             currentPlaybackPosition = timeMs
+            targetSeekPosition = timeMs
             
-            coroutineScope.launch {
-                try {
-                    delay(50) // Pequeno delay para garantir que o estado seja atualizado
+            // Se estava pausado, apenas atualiza a posição
+            if (isPaused) {
+                println("Seek em áudio pausado: posição atualizada para ${timeMs}ms")
+                return
+            }
+            
+            // Se estava reproduzindo, faz seek inteligente
+            if (isPlaying) {
+                println("Iniciando seek inteligente para ${timeMs}ms")
+                seekInProgress = true
+                
+                // Verifica se é seek para trás (posição menor que a atual)
+                val isSeekBackward = timeMs < currentPlaybackPosition
+                
+                if (isSeekBackward) {
+                    println("Seek para trás detectado, usando método de reinicialização...")
+                    seekDirection = -1
                     
-                    if (wasPaused) {
-                        // Se estava pausado, mantém pausado na nova posição
-                        isPaused = true
-                        isPlaying = false
-                    } else {
-                        // Se estava reproduzindo, inicia a reprodução na nova posição
-                        playLocalWavFile(currentPlayingFile!!, timeMs)
+                    // Para seek para trás, usamos o método de reinicialização
+                    seekCoroutine = coroutineScope.launch {
+                        try {
+                            // Pequeno delay para estabilizar
+                            delay(150)
+                            
+                            // Marca o seek como concluído
+                            seekInProgress = false
+                            seekDirection = 0
+                            println("Seek para trás concluído para ${timeMs}ms")
+                        } catch (e: Exception) {
+                            println("Erro durante seek para trás: ${e.message}")
+                            e.printStackTrace()
+                            seekInProgress = false
+                            seekDirection = 0
+                        }
                     }
-                } catch (e: Exception) {
-                    println("Erro durante seek: ${e.message}")
-                    e.printStackTrace()
+                } else {
+                    // Seek para frente: apenas atualiza a posição
+                    println("Seek para frente, posição será atualizada durante reprodução")
+                    seekDirection = 1
+                    seekCoroutine = coroutineScope.launch {
+                        try {
+                            delay(100) // Pequeno delay para permitir que a UI se atualize
+                            seekInProgress = false
+                            seekDirection = 0
+                            println("Seek para frente concluído para ${timeMs}ms")
+                        } catch (e: Exception) {
+                            println("Erro durante seek para frente: ${e.message}")
+                            e.printStackTrace()
+                            seekInProgress = false
+                            seekDirection = 0
+                        }
+                    }
                 }
             }
         } catch (e: Exception) {
             println("Erro ao iniciar seek: ${e.message}")
             e.printStackTrace()
+            seekInProgress = false
+            seekDirection = 0
         }
     }
 
@@ -339,38 +554,58 @@ class AudioService {
             val wavHeader = createWavHeader(chunkData.size)
             val fullWavData = wavHeader + chunkData
             
-            val requestBody = fullWavData.toRequestBody("audio/wav".toMediaType())
+            // Cria um arquivo temporário para enviar como multipart/form-data
+            val tempFile = java.io.File.createTempFile("chunk_${chunkIndex}_", ".wav")
+            tempFile.writeBytes(fullWavData)
             
-            val request = Request.Builder()
-                .url(apiEndpoint)
-                .addHeader("Content-Type", "audio/wav")
-                .addHeader("X-Session-ID", sessionId)
-                .addHeader("X-Chunk-Index", chunkIndex.toString())
-                .addHeader("X-Chunk-Timestamp", System.currentTimeMillis().toString())
-                .addHeader("X-Chunk-Size", chunkData.size.toString())
-                .post(requestBody)
-                .build()
-
-            println("Fazendo requisição para: ${request.url}")
-            println("Headers: ${request.headers}")
-
-            client.newCall(request).execute().use { response ->
-                println("Resposta da API - Código: ${response.code}")
-                println("Resposta da API - Mensagem: ${response.message}")
+            try {
+                // Cria o request body como multipart/form-data
+                val requestBody = okhttp3.MultipartBody.Builder()
+                    .setType(okhttp3.MultipartBody.FORM)
+                    .addFormDataPart(
+                        "audio",
+                        "chunk_${chunkIndex}.wav",
+                        okhttp3.RequestBody.create(
+                            "audio/wav".toMediaType(),
+                            tempFile
+                        )
+                    )
+                    .build()
                 
-                if (response.isSuccessful) {
-                    val processedAudioChunk = response.body?.bytes()
-                    if (processedAudioChunk != null) {
-                        println("Chunk $chunkIndex processado com sucesso. Tamanho da resposta: ${processedAudioChunk.size} bytes")
-                        // Reproduz o áudio processado
-                        audioTrack?.write(processedAudioChunk, 0, processedAudioChunk.size)
+                val request = Request.Builder()
+                    .url(apiEndpoint)
+                    .addHeader("X-Session-ID", sessionId)
+                    .addHeader("X-Chunk-Index", chunkIndex.toString())
+                    .addHeader("X-Chunk-Timestamp", System.currentTimeMillis().toString())
+                    .addHeader("X-Chunk-Size", chunkData.size.toString())
+                    .post(requestBody)
+                    .build()
+
+                println("Fazendo requisição para: ${request.url}")
+                println("Headers: ${request.headers}")
+
+                client.newCall(request).execute().use { response ->
+                    println("Resposta da API - Código: ${response.code}")
+                    println("Resposta da API - Mensagem: ${response.message}")
+                    
+                    if (response.isSuccessful) {
+                        val responseBody = response.body?.string()
+                        println("Chunk $chunkIndex processado com sucesso. Resposta: $responseBody")
+                        
+                        // Se a API retornar áudio processado, reproduz
+                        val processedAudioBytes = response.body?.bytes()
+                        if (processedAudioBytes != null && processedAudioBytes.isNotEmpty()) {
+                            audioTrack?.write(processedAudioBytes, 0, processedAudioBytes.size)
+                            println("Áudio processado reproduzido para chunk $chunkIndex")
+                        }
                     } else {
-                        println("Chunk $chunkIndex: Resposta vazia da API")
+                        val errorBody = response.body?.string()
+                        println("Falha ao enviar chunk $chunkIndex: ${response.code} - $errorBody")
                     }
-                } else {
-                    val errorBody = response.body?.string()
-                    println("Falha ao enviar chunk $chunkIndex: ${response.code} - $errorBody")
                 }
+            } finally {
+                // Remove o arquivo temporário
+                tempFile.delete()
             }
         } catch (e: Exception) {
             println("Erro ao enviar chunk $chunkIndex: ${e.message}")
@@ -400,40 +635,132 @@ class AudioService {
         return header
     }
     
+    // Método para testar conectividade básica (GET simples)
+    suspend fun testBasicConnectivity(apiEndpoint: String) = withContext(Dispatchers.IO) {
+        try {
+            println("=== TESTE DE CONECTIVIDADE BÁSICA ===")
+            println("Endpoint base: $apiEndpoint")
+            
+            // Remove o /upload do endpoint e adiciona /health
+            val baseUrl = apiEndpoint.replace("/upload", "/health")
+            println("Testando conectividade em: $baseUrl")
+            
+            val request = Request.Builder()
+                .url(baseUrl)
+                .get()
+                .build()
+
+            println("Executando requisição GET...")
+            val startTime = System.currentTimeMillis()
+            
+            client.newCall(request).execute().use { response ->
+                val endTime = System.currentTimeMillis()
+                val duration = endTime - startTime
+                
+                println("=== RESPOSTA DO SERVIDOR ===")
+                println("Tempo de resposta: ${duration}ms")
+                println("Código de status: ${response.code}")
+                println("Mensagem: ${response.message}")
+                
+                val responseBody = response.body?.string()
+                println("Corpo da resposta: $responseBody")
+                
+                if (response.isSuccessful) {
+                    println("✅ SERVIDOR RESPONDEU!")
+                    return@withContext true
+                } else {
+                    println("❌ SERVIDOR RESPONDEU COM ERRO - Código: ${response.code}")
+                    return@withContext false
+                }
+            }
+        } catch (e: Exception) {
+            println("=== ERRO NA CONECTIVIDADE BÁSICA ===")
+            println("Tipo de erro: ${e.javaClass.simpleName}")
+            println("Mensagem: ${e.message}")
+            e.printStackTrace()
+            return@withContext false
+        }
+    }
+
     // Método para testar a conectividade com a API
     suspend fun testAPIConnection(apiEndpoint: String) = withContext(Dispatchers.IO) {
         try {
-            println("Testando conexão com API: $apiEndpoint")
+            println("=== TESTE DE CONEXÃO COM API ===")
+            println("Endpoint: $apiEndpoint")
+            println("Iniciando teste de conectividade...")
             
             val testData = ByteArray(1024) { 0 } // Dados de teste vazios
             val wavHeader = createWavHeader(testData.size)
             val fullData = wavHeader + testData
             
-            val requestBody = fullData.toRequestBody("audio/wav".toMediaType())
+            println("Dados de teste preparados: ${fullData.size} bytes")
             
-            val request = Request.Builder()
-                .url(apiEndpoint)
-                .addHeader("Content-Type", "audio/wav")
-                .addHeader("X-Session-ID", "test-session")
-                .addHeader("X-Chunk-Index", "0")
-                .addHeader("X-Chunk-Timestamp", System.currentTimeMillis().toString())
-                .addHeader("X-Chunk-Size", testData.size.toString())
-                .addHeader("X-Test-Mode", "true")
-                .post(requestBody)
-                .build()
+            // Cria um arquivo temporário para o teste
+            val tempFile = java.io.File.createTempFile("test_", ".wav")
+            tempFile.writeBytes(fullData)
+            
+            try {
+                // Cria o request body como multipart/form-data
+                val requestBody = okhttp3.MultipartBody.Builder()
+                    .setType(okhttp3.MultipartBody.FORM)
+                    .addFormDataPart(
+                        "audio",
+                        "test_audio.wav",
+                        okhttp3.RequestBody.create(
+                            "audio/wav".toMediaType(),
+                            tempFile
+                        )
+                    )
+                    .build()
+                
+                val request = Request.Builder()
+                    .url(apiEndpoint)
+                    .addHeader("X-Session-ID", "test-session-${System.currentTimeMillis()}")
+                    .addHeader("X-Chunk-Index", "0")
+                    .addHeader("X-Chunk-Timestamp", System.currentTimeMillis().toString())
+                    .addHeader("X-Chunk-Size", testData.size.toString())
+                    .addHeader("X-Test-Mode", "true")
+                    .post(requestBody)
+                    .build()
 
-            client.newCall(request).execute().use { response ->
-                println("Teste API - Código: ${response.code}")
-                println("Teste API - Mensagem: ${response.message}")
-                println("Teste API - Headers: ${response.headers}")
+                println("Requisição preparada:")
+                println("  URL: ${request.url}")
+                println("  Método: ${request.method}")
+                println("  Headers: ${request.headers}")
+
+                println("Executando requisição...")
+                val startTime = System.currentTimeMillis()
                 
-                val responseBody = response.body?.string()
-                println("Teste API - Corpo da resposta: $responseBody")
-                
-                return@withContext response.isSuccessful
+                client.newCall(request).execute().use { response ->
+                    val endTime = System.currentTimeMillis()
+                    val duration = endTime - startTime
+                    
+                    println("=== RESPOSTA DA API ===")
+                    println("Tempo de resposta: ${duration}ms")
+                    println("Código de status: ${response.code}")
+                    println("Mensagem: ${response.message}")
+                    println("Headers da resposta: ${response.headers}")
+                    
+                    val responseBody = response.body?.string()
+                    println("Corpo da resposta: $responseBody")
+                    
+                    if (response.isSuccessful) {
+                        println("✅ CONEXÃO BEM-SUCEDIDA!")
+                        return@withContext true
+                    } else {
+                        println("❌ FALHA NA CONEXÃO - Código: ${response.code}")
+                        return@withContext false
+                    }
+                }
+            } finally {
+                // Remove o arquivo temporário
+                tempFile.delete()
             }
         } catch (e: Exception) {
-            println("Erro no teste da API: ${e.message}")
+            println("=== ERRO NO TESTE DA API ===")
+            println("Tipo de erro: ${e.javaClass.simpleName}")
+            println("Mensagem: ${e.message}")
+            println("Causa: ${e.cause?.message}")
             e.printStackTrace()
             return@withContext false
         }

@@ -23,6 +23,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.vvai.calmwave.ui.theme.CalmWaveTheme
+import kotlinx.coroutines.launch
 import com.vvai.calmwave.ui.theme.screen.RecordingScreen
 import com.vvai.calmwave.ui.theme.screen.PlaylistsScreen
 import com.vvai.calmwave.ui.theme.screen.AudioItem
@@ -121,7 +122,7 @@ class MainActivity : ComponentActivity() {
                             onStopRecording = {
                                 try {
                                     println("Parando gravação...")
-                                    viewModel.stopRecordingAndProcess(apiEndpoint = "http://127.0.0.1:5000/upload")
+                                    viewModel.stopRecordingAndProcess(apiEndpoint = "http://10.0.2.2:5000/upload")
                                     
                                     // Recarrega a lista de arquivos após parar a gravação
                                     val listFilesProvider: () -> List<File> = { listRecordedWavFiles() }
@@ -148,8 +149,15 @@ class MainActivity : ComponentActivity() {
                             onRecordingClick = {
                                 // Já estamos na tela de gravação
                             },
+                            onTestAPIClicked = {
+                                viewModel.testAPI()
+                            },
+                            onTestBasicConnectivity = {
+                                viewModel.testBasicConnectivity()
+                            },
                             isRecording = uiState.isRecording,
-                            recordingTime = formatRecordingTime(uiState.recordingDuration)
+                            recordingTime = formatRecordingTime(uiState.recordingDuration),
+                            statusText = uiState.statusText
                         )
                     }
                     "playlists" -> {
@@ -278,6 +286,7 @@ fun AudioPlayerScreen(
     onRecordClicked: () -> Unit,
     onStopClicked: () -> Unit,
     onTestAPIClicked: () -> Unit,
+    onTestBasicConnectivity: () -> Unit,
     onFileClicked: (String) -> Unit,
     onPauseResumeClicked: () -> Unit,
     onStopPlaybackClicked: () -> Unit,
@@ -285,6 +294,7 @@ fun AudioPlayerScreen(
     onRefreshFiles: () -> Unit
 ) {
     var isSeeking by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
 
     Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
         Column(
@@ -316,12 +326,27 @@ fun AudioPlayerScreen(
                 ) {
                     Text(text = "Parar Gravação")
                 }
-                
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Botões de Teste
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
                 Button(
                     onClick = onTestAPIClicked,
                     enabled = !uiState.isRecording && !uiState.isProcessing
                 ) {
                     Text(text = "Testar API")
+                }
+                
+                Button(
+                    onClick = onTestBasicConnectivity,
+                    enabled = !uiState.isRecording && !uiState.isProcessing
+                ) {
+                    Text(text = "Testar Conexão")
                 }
             }
 
@@ -334,22 +359,13 @@ fun AudioPlayerScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp)
                 ) {
-                    // Barra de progresso visual (sempre visível)
-                    LinearProgressIndicator(
-                        progress = { uiState.playbackProgress },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(4.dp)
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Slider para selecionar tempo
+                    // Slider para selecionar tempo (única barra de progresso)
                     var sliderPosition by remember { mutableStateOf(uiState.currentPosition.toFloat()) }
                     
                     // Atualiza a posição do slider apenas se não estiver sendo arrastado
                     LaunchedEffect(uiState.currentPosition, isSeeking) {
                         if (!isSeeking) {
+                            // Atualização suave da posição do slider
                             sliderPosition = uiState.currentPosition.toFloat()
                         }
                     }
@@ -357,16 +373,33 @@ fun AudioPlayerScreen(
                     Slider(
                         value = sliderPosition,
                         onValueChange = { newValue ->
-                            isSeeking = true
+                            if (!isSeeking) {
+                                isSeeking = true
+                            }
                             sliderPosition = newValue
                         },
                         onValueChangeFinished = {
                             val bounded = sliderPosition.toLong().coerceIn(0L, uiState.totalDuration)
-                            onSeek(bounded)
-                            isSeeking = false
+                            
+                            // Executa o seek de forma segura
+                            try {
+                                onSeek(bounded)
+                            } catch (e: Exception) {
+                                println("Erro durante seek no Slider: ${e.message}")
+                                e.printStackTrace()
+                            }
+                            
+                            // Aguarda um pouco antes de permitir atualizações automáticas
+                            // Delay maior para seek para trás para evitar conflitos
+                            val delayMs = if (bounded < uiState.currentPosition) 300L else 150L
+                            coroutineScope.launch {
+                                kotlinx.coroutines.delay(delayMs)
+                                isSeeking = false
+                            }
                         },
-                        valueRange = 0f..uiState.totalDuration.toFloat(),
-                        modifier = Modifier.fillMaxWidth()
+                        valueRange = 0f..maxOf(uiState.totalDuration.toFloat(), 1f), // Evita divisão por zero
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = uiState.hasActiveAudio && !uiState.isProcessing // Só habilita quando há áudio ativo e não está processando
                     )
 
                     Spacer(modifier = Modifier.height(8.dp))

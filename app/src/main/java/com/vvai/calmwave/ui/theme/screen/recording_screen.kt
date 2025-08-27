@@ -31,8 +31,11 @@ fun RecordingScreen(
     onPlaylistsClick: () -> Unit,
     onHomeClick: () -> Unit,
     onRecordingClick: () -> Unit,
+    onTestAPIClicked: () -> Unit,
+    onTestBasicConnectivity: () -> Unit,
     isRecording: Boolean = false,
-    recordingTime: String = "00:00:00"
+    recordingTime: String = "00:00:00",
+    statusText: String = "Pronto para gravar"
 ) {
     Column(
         modifier = Modifier.fillMaxSize()
@@ -67,7 +70,17 @@ fun RecordingScreen(
                 color = DarkTeal
             )
             
-            Spacer(modifier = Modifier.height(40.dp))
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            // Status text
+            Text(
+                text = statusText,
+                fontSize = 14.sp,
+                color = DarkGray,
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
+            
+            Spacer(modifier = Modifier.height(24.dp))
             
             // Botão Iniciar/Parar
             Button(
@@ -102,6 +115,48 @@ fun RecordingScreen(
                         color = Color.White,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            // Botões de teste
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                Button(
+                    onClick = onTestAPIClicked,
+                    enabled = !isRecording,
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = LightTealGreen
+                    ),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Text(
+                        text = "Testar API",
+                        color = DarkTeal,
+                        fontSize = 14.sp
+                    )
+                }
+                
+                Spacer(modifier = Modifier.width(8.dp))
+                
+                Button(
+                    onClick = onTestBasicConnectivity,
+                    enabled = !isRecording,
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = LightTealGreen
+                    ),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Text(
+                        text = "Testar Conexão",
+                        color = DarkTeal,
+                        fontSize = 14.sp
                     )
                 }
             }
