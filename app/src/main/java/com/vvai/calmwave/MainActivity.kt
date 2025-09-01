@@ -1,6 +1,7 @@
 package com.vvai.calmwave
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -60,65 +61,84 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             CalmWaveTheme {
-                // 3. Coleta o estado da UI do ViewModel e passa para o Composable
-                val uiState by viewModel.uiState.collectAsState()
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Button(onClick = {
+                        startActivity(Intent(this@MainActivity, GravarActivity::class.java))
+                    }) {
+                        Text("Ir para Gravar")
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(onClick = {
+                        startActivity(Intent(this@MainActivity, PlaylistActivity::class.java))
+                    }) {
+                        Text("Ir para Playlist")
+                    }
 
-                // 4. Carrega a lista de arquivos ao iniciar a tela
-                // O LaunchedEffect executa a lógica apenas uma vez
-                val context = LocalContext.current
-                LaunchedEffect(Unit) {
-                    val listFilesProvider: () -> List<File> = { listRecordedWavFiles() }
-                    viewModel.loadWavFiles(listFilesProvider)
-                }
+                    // 3. Coleta o estado da UI do ViewModel e passa para o Composable
+                    val uiState by viewModel.uiState.collectAsState()
 
-                AudioPlayerScreen(
-                    uiState = uiState,
-                    onRecordClicked = {
-                        val downloadsDir = getDownloadsDirectory()
-                        val fileName = generateFileName()
-                        val filePath = if (downloadsDir?.exists() == true) {
-                            "${downloadsDir.absolutePath}/$fileName"
-                        } else {
-                            val cacheDir = externalCacheDir
-                            cacheDir?.mkdirs()
-                            "${cacheDir?.absolutePath}/$fileName"
-                        }
-                        if (filePath != "null/null") {
-                            viewModel.startRecording(filePath)
-                        } else {
-                            Toast.makeText(context, "Erro: Não foi possível obter o diretório de gravação.", Toast.LENGTH_LONG).show()
-                        }
-                    },
-                    onStopClicked = {
-                        viewModel.stopRecordingAndProcess(apiEndpoint = "http://10.0.2.2:5000/upload")
-                    },
-                    onTestAPIClicked = {
-                        viewModel.testAPI()
-                    },
-                    onTestBasicConnectivity = {
-                        viewModel.testBasicConnectivity()
-                    },
-                    onFileClicked = { filePath ->
-                        viewModel.playAudioFile(filePath)
-                    },
-                    onPauseResumeClicked = {
-                        if (uiState.isPlaying) {
-                            viewModel.pausePlayback()
-                        } else {
-                            viewModel.resumePlayback()
-                        }
-                    },
-                    onStopPlaybackClicked = {
-                        viewModel.stopPlayback()
-                    },
-                    onSeek = { timeMs ->
-                        viewModel.seekTo(timeMs)
-                    },
-                    onRefreshFiles = {
+                    // 4. Carrega a lista de arquivos ao iniciar a tela
+                    // O LaunchedEffect executa a lógica apenas uma vez
+                    val context = LocalContext.current
+                    LaunchedEffect(Unit) {
                         val listFilesProvider: () -> List<File> = { listRecordedWavFiles() }
                         viewModel.loadWavFiles(listFilesProvider)
                     }
-                )
+
+                    AudioPlayerScreen(
+                        uiState = uiState,
+                        onRecordClicked = {
+                            val downloadsDir = getDownloadsDirectory()
+                            val fileName = generateFileName()
+                            val filePath = if (downloadsDir?.exists() == true) {
+                                "${downloadsDir.absolutePath}/$fileName"
+                            } else {
+                                val cacheDir = externalCacheDir
+                                cacheDir?.mkdirs()
+                                "${cacheDir?.absolutePath}/$fileName"
+                            }
+                            if (filePath != "null/null") {
+                                viewModel.startRecording(filePath)
+                            } else {
+                                Toast.makeText(context, "Erro: Não foi possível obter o diretório de gravação.", Toast.LENGTH_LONG).show()
+                            }
+                        },
+                        onStopClicked = {
+                            viewModel.stopRecordingAndProcess(apiEndpoint = "http://10.0.2.2:5000/upload")
+                        },
+                        onTestAPIClicked = {
+                            viewModel.testAPI()
+                        },
+                        onTestBasicConnectivity = {
+                            viewModel.testBasicConnectivity()
+                        },
+                        onFileClicked = { filePath ->
+                            viewModel.playAudioFile(filePath)
+                        },
+                        onPauseResumeClicked = {
+                            if (uiState.isPlaying) {
+                                viewModel.pausePlayback()
+                            } else {
+                                viewModel.resumePlayback()
+                            }
+                        },
+                        onStopPlaybackClicked = {
+                            viewModel.stopPlayback()
+                        },
+                        onSeek = { timeMs ->
+                            viewModel.seekTo(timeMs)
+                        },
+                        onRefreshFiles = {
+                            val listFilesProvider: () -> List<File> = { listRecordedWavFiles() }
+                            viewModel.loadWavFiles(listFilesProvider)
+                        }
+                    )
+                }
             }
         }
     }
