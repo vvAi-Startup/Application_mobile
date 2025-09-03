@@ -41,6 +41,7 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 import androidx.lifecycle.lifecycleScope
+import com.vvai.calmwave.models.UiState
 
 class MainActivity : ComponentActivity() {
 
@@ -168,6 +169,13 @@ class MainActivity : ComponentActivity() {
                     },
                     onSeek = { position ->
                         viewModel.seekTo(position)
+                    },
+                    onRefreshFiles = {
+                        val listFilesProvider: () -> List<File> = { listRecordedWavFiles() }
+                        viewModel.loadWavFiles(listFilesProvider)
+                    },
+                    onFileClicked = { filePath ->
+                        viewModel.playAudioFile(filePath)
                     }
                 )
                 
@@ -266,7 +274,7 @@ private fun formatTime(milliseconds: Long): String {
 // 5. O Composable agora recebe o estado da UI e callbacks de evento
 @Composable
 fun AudioPlayerScreen(
-    uiState: MainViewModel.UiState,
+    uiState: UiState,
     onRecordClicked: () -> Unit,
     onStopClicked: () -> Unit,
     onTestAPIClicked: () -> Unit,
@@ -275,7 +283,9 @@ fun AudioPlayerScreen(
     onPauseClicked: () -> Unit,
     onResumeClicked: () -> Unit,
     onStopPlaybackClicked: () -> Unit,
-    onSeek: (Long) -> Unit
+    onSeek: (Long) -> Unit,
+    onRefreshFiles: () -> Unit,
+    onFileClicked: (String) -> Unit
 ) {
     var isSeeking by remember { mutableStateOf(false) }
 

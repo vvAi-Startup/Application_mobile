@@ -8,12 +8,17 @@ package com.vvai.calmwave.controller
 
 import android.content.Context
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.vvai.calmwave.models.TempRecording
 import com.vvai.calmwave.models.UiState
+import com.vvai.calmwave.models.WebSocketState
+import com.vvai.calmwave.models.ConnectionStatus
+import com.vvai.calmwave.models.AudioResponseMessage
+import com.vvai.calmwave.models.AudioProcessedMessage
+import com.vvai.calmwave.models.ConnectionStatusMessage
+import com.vvai.calmwave.models.ResponseType
 import com.vvai.calmwave.service.AudioService
 import com.vvai.calmwave.service.WavRecorder
+import com.vvai.calmwave.service.WebSocketService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -574,20 +579,5 @@ class MainViewModel(
                 }
             }
         }
-    }
-}
-
-// Factory para criar o ViewModel com as dependências
-class MainViewModelFactory(
-    private val audioService: AudioService,
-    private val wavRecorder: WavRecorder,
-    private val context: Context
-) : ViewModelProvider.Factory {
-    override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        if (modelClass.isAssignableFrom(MainViewModel::class.java)) {
-            @Suppress("UNCHECKED_CAST")
-            return MainViewModel(audioService, wavRecorder, context) as T
-        }
-        throw IllegalArgumentException("Unknown ViewModel class")
     }
 }

@@ -51,6 +51,7 @@ class WavRecorder(
     private var recordingStartTime = 0L
     private var chunkIndex = 0
     private var sessionId: String? = null
+    private var currentFilePath: String? = null
     
     // ========================================
     // BACKEND: Callback para chunks
@@ -71,6 +72,7 @@ class WavRecorder(
                 }
                 
                 this@WavRecorder.sessionId = sessionId
+                this@WavRecorder.currentFilePath = filePath
                 
                 // Cria o diretório se não existir
                 val file = File(filePath)
@@ -161,7 +163,7 @@ class WavRecorder(
                         chunkCallback?.invoke(buffer.copyOf(bytesRead), chunkIndex)
                         
                         // Pequeno delay para controlar a taxa de envio
-                        delay(AudioConstants.CHUNK_DURATION_MS)
+                        kotlinx.coroutines.delay(AudioConstants.CHUNK_DURATION_MS.toLong())
                     }
                 }
                 
@@ -198,7 +200,9 @@ class WavRecorder(
                 outputStream = null
                 
                 // Atualiza o cabeçalho WAV com o tamanho final
-                updateWavHeader(filePath)
+                currentFilePath?.let { path ->
+                    updateWavHeader(path)
+                }
                 
                 // Finaliza transmissão WebSocket se conectado
                 if (webSocketService.webSocketState.value.isConnected) {

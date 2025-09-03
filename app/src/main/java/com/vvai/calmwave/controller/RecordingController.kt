@@ -19,6 +19,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
+import android.util.Log
 
 class RecordingController(
     private val audioService: AudioService,
@@ -107,11 +108,12 @@ class RecordingController(
                     webSocketService.endAudioTransmission(
                         totalChunksSent = stats.chunksSent,
                         finalDuration = duration,
-                        sessionId = sessionId
+                        sessionId = sessionId ?: stats.sessionId
                     )
                 }
                 
             } catch (e: Exception) {
+                Log.e("RecordingController", "Erro ao parar gravação: ${e.message}")
                 e.printStackTrace()
             }
         }
@@ -130,7 +132,8 @@ class RecordingController(
                     endTime = endTime,
                     duration = duration,
                     fileSize = file.length(),
-                    suggestedName = suggestedName
+                    suggestedName = suggestedName,
+                    status = TempRecordingStatus.PENDING_RENAME // Garante status correto
                 )
                 
                 return tempRecording
@@ -159,11 +162,7 @@ class RecordingController(
             try {
                 tempRecording?.let { temp ->
                     // Atualiza a gravação temporária com o nome confirmado
-                    val updatedTemp = temp.copy(
-                        customName = customName,
-                        finalName = customName,
-                        status = TempRecordingStatus.CONFIRMED
-                    )
+                    val updatedTemp = temp.confirmName(customName)
                     
                     // Cria o caminho final
                     val finalPath = updatedTemp.getFinalPath()
@@ -179,11 +178,16 @@ class RecordingController(
                             currentRecordingPath = null
                             sessionId = null
                             return@withContext true
+                        } else {
+                            Log.e("RecordingController", "Falha ao renomear arquivo")
                         }
+                    } else {
+                        Log.e("RecordingController", "Arquivo temporário não encontrado")
                     }
                 }
                 false
             } catch (e: Exception) {
+                Log.e("RecordingController", "Erro ao confirmar gravação: ${e.message}")
                 e.printStackTrace()
                 false
             }
@@ -199,12 +203,15 @@ class RecordingController(
             try {
                 tempRecording?.let { temp ->
                     // Atualiza status para cancelado
-                    tempRecording = temp.copy(status = TempRecordingStatus.CANCELLED)
+                    tempRecording = temp.cancel()
                     
                     // Remove arquivo temporário
                     val tempFile = File(temp.tempFilePath)
                     if (tempFile.exists()) {
-                        tempFile.delete()
+                        val deleted = tempFile.delete()
+                        if (!deleted) {
+                            Log.w("RecordingController", "Falha ao deletar arquivo temporário")
+                        }
                     }
                     
                     // Limpa referências
@@ -215,6 +222,7 @@ class RecordingController(
                 }
                 false
             } catch (e: Exception) {
+                Log.e("RecordingController", "Erro ao cancelar gravação: ${e.message}")
                 e.printStackTrace()
                 false
             }

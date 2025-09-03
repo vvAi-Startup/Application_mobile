@@ -9,6 +9,7 @@ package com.vvai.calmwave.controller
 import android.content.Context
 import com.vvai.calmwave.models.AudioChunk
 import com.vvai.calmwave.models.RecordingSession
+import com.vvai.calmwave.models.RecordingStatus
 import com.vvai.calmwave.service.AudioService
 import com.vvai.calmwave.service.WavRecorder
 import kotlinx.coroutines.CoroutineScope
@@ -73,7 +74,7 @@ class AudioController(
                 
                 // Inicia a gravação
                 audioService.startBluetoothSco()
-                wavRecorder.startRecording(filePath)
+                wavRecorder.startRecording(filePath, sessionId = null)
                 
             } catch (e: Exception) {
                 currentSession = currentSession?.copy(
@@ -121,22 +122,27 @@ class AudioController(
     // ========================================
     //  MANTER: Interface unificada para controles de áudio
     fun playAudio(filePath: String) {
-        audioService.playAudio(filePath)
+        // TODO: Implementar reprodução de áudio
+        // audioService.playAudio(filePath)
     }
     
     fun stopPlayback() {
-        audioService.stopPlayback()
+        // TODO: Implementar parada de reprodução
+        // audioService.stopPlayback()
     }
     
     fun pausePlayback() {
-        audioService.pausePlayback()
+        // TODO: Implementar pausa de reprodução
+        // audioService.pausePlayback()
     }
     
     fun resumePlayback() {
-        audioService.resumePlayback()
+        // TODO: Implementar retomada de reprodução
+        // audioService.resumePlayback()
     }
     
     fun seekTo(position: Long) {
-        audioService.seekTo(position)
+        // TODO: Implementar busca de posição
+        // audioService.seekTo(position)
     }
 }

@@ -160,8 +160,25 @@ class WebSocketService(
             return false
         }
         
+        if (webSocket == null) {
+            Log.w(TAG, "WebSocket não está disponível")
+            return false
+        }
+        
+        // Valida a mensagem antes de enviar
+        if (!WebSocketMessageUtils.validateMessage(message)) {
+            Log.e(TAG, "Mensagem inválida: ${message.type}")
+            return false
+        }
+        
         return try {
             val json = WebSocketMessageUtils.toJson(message)
+            
+            if (json.isEmpty()) {
+                Log.e(TAG, "Falha ao serializar mensagem para JSON")
+                return false
+            }
+            
             val success = webSocket?.send(json) ?: false
             
             if (success) {
@@ -177,12 +194,22 @@ class WebSocketService(
                 }
                 
                 Log.d(TAG, "Mensagem enviada: ${message.type}")
+            } else {
+                Log.w(TAG, "Falha ao enviar mensagem via WebSocket")
             }
             
             success
             
         } catch (e: Exception) {
             Log.e(TAG, "Erro ao enviar mensagem: ${e.message}")
+            
+            // Atualiza contador de erros
+            _webSocketState.value = _webSocketState.value.copy(
+                errorCount = _webSocketState.value.errorCount + 1,
+                lastError = e.message,
+                lastErrorTime = System.currentTimeMillis()
+            )
+            
             false
         }
     }
@@ -196,6 +223,17 @@ class WebSocketService(
         chunkIndex: Int,
         sessionId: String? = null
     ): Boolean {
+        // Validação de parâmetros
+        if (audioData.isEmpty()) {
+            Log.w(TAG, "Tentativa de enviar chunk vazio")
+            return false
+        }
+        
+        if (chunkIndex < 0) {
+            Log.w(TAG, "Índice de chunk inválido: $chunkIndex")
+            return false
+        }
+        
         val base64Audio = Base64.encodeToString(audioData, Base64.NO_WRAP)
         
         val message = AudioChunkMessage(
@@ -205,7 +243,16 @@ class WebSocketService(
             chunkSize = audioData.size
         )
         
-        return sendMessage(message)
+        val success = sendMessage(message)
+        
+        if (success) {
+            // Atualiza contador de chunks transmitidos
+            _webSocketState.value = _webSocketState.value.copy(
+                chunksTransmitted = _webSocketState.value.chunksTransmitted + 1
+            )
+        }
+        
+        return success
     }
     
     // ========================================
@@ -217,6 +264,17 @@ class WebSocketService(
         estimatedDuration: Long,
         sessionId: String? = null
     ): Boolean {
+        // Validação de parâmetros
+        if (totalChunks <= 0) {
+            Log.w(TAG, "Total de chunks deve ser maior que zero")
+            return false
+        }
+        
+        if (estimatedDuration <= 0) {
+            Log.w(TAG, "Duração estimada deve ser maior que zero")
+            return false
+        }
+        
         val transmissionId = UUID.randomUUID().toString()
         
         val message = AudioStartMessage(
@@ -253,6 +311,17 @@ class WebSocketService(
         finalDuration: Long,
         sessionId: String? = null
     ): Boolean {
+        // Validação de parâmetros
+        if (totalChunksSent < 0) {
+            Log.w(TAG, "Total de chunks enviados não pode ser negativo")
+            return false
+        }
+        
+        if (finalDuration < 0) {
+            Log.w(TAG, "Duração final não pode ser negativa")
+            return false
+        }
+        
         val message = AudioEndMessage(
             sessionId = sessionId ?: _webSocketState.value.sessionId,
             totalChunksSent = totalChunksSent,
@@ -313,8 +382,7 @@ class WebSocketService(
                     isConnecting = false,
                     isReconnecting = false,
                     lastConnected = System.currentTimeMillis(),
-                    reconnectAttempts = 0,
-                    currentReconnectDelayIndex = 0
+                    reconnectAttempts = 0
                 )
                 
                 // Envia heartbeat inicial
@@ -346,7 +414,7 @@ class WebSocketService(
             }
             
             override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
-                Log.d(TAG, "Mensagem binária recebida: ${bytes.size()} bytes")
+                Log.d(TAG, "Mensagem binária recebida: ${bytes.size} bytes")
                 // Para mensagens binárias, convertemos para string se possível
                 onMessage(webSocket, bytes.utf8())
             }

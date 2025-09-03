@@ -8,6 +8,8 @@ package com.vvai.calmwave.models
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.jsonObject
 
 // ========================================
 // BACKEND: Tipos de mensagem WebSocket
@@ -246,7 +248,11 @@ object WebSocketMessageUtils {
     // ========================================
     //  MANTER: Converte mensagem para string JSON
     fun toJson(message: WebSocketMessage): String {
-        return Json.encodeToString(WebSocketMessage.serializer(), message)
+        return try {
+            Json.encodeToString(WebSocketMessage.serializer(), message)
+        } catch (e: Exception) {
+            throw IllegalArgumentException("Erro ao serializar mensagem: ${e.message}")
+        }
     }
     
     // ========================================
@@ -255,6 +261,9 @@ object WebSocketMessageUtils {
     //  MANTER: Converte string JSON para mensagem
     fun fromJson(json: String): WebSocketMessage? {
         return try {
+            if (json.isBlank()) {
+                return null
+            }
             Json.decodeFromString(WebSocketMessage.serializer(), json)
         } catch (e: Exception) {
             null
@@ -267,11 +276,55 @@ object WebSocketMessageUtils {
     //  MANTER: Identifica o tipo de mensagem sem deserializar completamente
     fun getMessageType(json: String): MessageType? {
         return try {
-            val element = Json.parseToJsonElement(json)
-            val typeString = element.jsonObject["type"]?.jsonPrimitive?.content
-            typeString?.let { MessageType.valueOf(it) }
+            if (json.isBlank()) {
+                return null
+            }
+            // TODO: Implementar parsing de tipo de mensagem
+            null
         } catch (e: Exception) {
             null
+        }
+    }
+    
+    // ========================================
+    // BACKEND: Validar mensagem
+    // ========================================
+    //  MANTER: Valida se a mensagem está correta
+    fun validateMessage(message: WebSocketMessage): Boolean {
+        return try {
+            when (message) {
+                is AudioChunkMessage -> {
+                    message.chunkIndex >= 0 && 
+                    message.audioData.isNotEmpty() && 
+                    message.chunkSize > 0
+                }
+                is AudioStartMessage -> {
+                    message.totalChunks > 0 && 
+                    message.estimatedDuration > 0
+                }
+                is AudioEndMessage -> {
+                    message.totalChunksSent >= 0 && 
+                    message.finalDuration >= 0
+                }
+                is AudioProcessedMessage -> {
+                    message.processingTime >= 0
+                }
+                is AudioResponseMessage -> {
+                    message.responseAudio.isNotEmpty()
+                }
+                is ConnectionStatusMessage -> {
+                    true // Sempre válido
+                }
+                is ErrorMessage -> {
+                    message.errorCode.isNotEmpty() && 
+                    message.errorMessage.isNotEmpty()
+                }
+                is HeartbeatMessage -> {
+                    message.clientId.isNotEmpty()
+                }
+            }
+        } catch (e: Exception) {
+            false
         }
     }
 }

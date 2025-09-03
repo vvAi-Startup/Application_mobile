@@ -70,6 +70,34 @@ data class TempRecording(
         val directory = File(originalFilePath).parent
         return "$directory/$fileName.wav"
     }
+    
+    // ========================================
+    // BACKEND: Atualizar status
+    // ========================================
+    //  MANTER: Cria nova instância com status atualizado
+    fun updateStatus(newStatus: TempRecordingStatus): TempRecording {
+        return copy(status = newStatus)
+    }
+    
+    // ========================================
+    // BACKEND: Confirmar nome
+    // ========================================
+    //  MANTER: Cria nova instância com nome confirmado
+    fun confirmName(name: String): TempRecording {
+        return copy(
+            customName = name,
+            finalName = name,
+            status = TempRecordingStatus.CONFIRMED
+        )
+    }
+    
+    // ========================================
+    // BACKEND: Cancelar gravação
+    // ========================================
+    //  MANTER: Cria nova instância com status cancelado
+    fun cancel(): TempRecording {
+        return copy(status = TempRecordingStatus.CANCELLED)
+    }
 }
 
 // ========================================
