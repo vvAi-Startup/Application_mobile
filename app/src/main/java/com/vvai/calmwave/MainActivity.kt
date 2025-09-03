@@ -1,5 +1,11 @@
 package com.vvai.calmwave
 
+// ========================================
+// FRONTEND + BACKEND MISTO - MAIN ACTIVITY
+// ========================================
+// Este arquivo contém tanto lógica de UI quanto lógica de negócio
+// RECOMENDAÇÃO: Separar lógica de negócio para controllers
+
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
@@ -22,25 +28,44 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import com.vvai.calmwave.controller.MainViewModel
+import com.vvai.calmwave.controller.MainViewModelFactory
+import com.vvai.calmwave.service.AudioService
+import com.vvai.calmwave.service.WavRecorder
+import com.vvai.calmwave.service.WebSocketService
+import com.vvai.calmwave.ui.RenameRecordingDialog
 import com.vvai.calmwave.ui.theme.CalmWaveTheme
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
+import androidx.lifecycle.lifecycleScope
+import com.vvai.calmwave.models.UiState
 
 class MainActivity : ComponentActivity() {
 
-    // 1. Inicializa o ViewModel usando a ViewModel Factory
+    // ========================================
+    // BACKEND: Inicialização do ViewModel
+    // ========================================
+    //  MANTER: Injeção de dependências
     private val viewModel: MainViewModel by viewModels {
+        val audioService = AudioService()
+        val webSocketService = WebSocketService(this, lifecycleScope)
+        val wavRecorder = WavRecorder(webSocketService, lifecycleScope)
+        
         MainViewModelFactory(
-            audioService = AudioService(),
-            wavRecorder = WavRecorder(),
-            context = applicationContext
+            audioService = audioService,
+            wavRecorder = wavRecorder,
+            webSocketService = webSocketService,
+            context = this
         )
     }
 
-    // Contrato para solicitar múltiplas permissões
+    // ========================================
+    // BACKEND: Contrato para solicitar permissões
+    // ========================================
+    // ⚠️ REVISAR: Pode ser movido para um PermissionController
     private val requestPermissionsLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
             val allPermissionsGranted = permissions.entries.all { it.value }
@@ -54,26 +79,46 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // 2. Verifica e solicita as permissões no início
+        // ========================================
+        // BACKEND: Verificação de permissões
+        // ========================================
+        // ⚠️ REVISAR: Pode ser movido para um PermissionController
         checkAndRequestPermissions()
 
+        // ========================================
+        // FRONTEND: Configuração da UI
+        // ========================================
+        //  MANTER: Configuração da interface
         enableEdgeToEdge()
         setContent {
             CalmWaveTheme {
-                // 3. Coleta o estado da UI do ViewModel e passa para o Composable
+                // ========================================
+                // BACKEND: Coleta do estado da UI do ViewModel
+                // ========================================
+                //  MANTER: Comunicação com ViewModel
                 val uiState by viewModel.uiState.collectAsState()
 
-                // 4. Carrega a lista de arquivos ao iniciar a tela
-                // O LaunchedEffect executa a lógica apenas uma vez
+                // ========================================
+                // BACKEND: Carrega a lista de arquivos ao iniciar
+                // ========================================
+                // ⚠️ REVISAR: Pode ser movido para um FileController
                 val context = LocalContext.current
                 LaunchedEffect(Unit) {
                     val listFilesProvider: () -> List<File> = { listRecordedWavFiles() }
                     viewModel.loadWavFiles(listFilesProvider)
                 }
 
+                // ========================================
+                // FRONTEND: Interface principal do usuário
+                // ========================================
+                //  MANTER: UI principal
                 AudioPlayerScreen(
                     uiState = uiState,
                     onRecordClicked = {
+                        // ========================================
+                        // BACKEND: Lógica de gravação
+                        // ========================================
+                        // ⚠️ REVISAR: Pode ser movido para um RecordingController
                         val downloadsDir = getDownloadsDirectory()
                         val fileName = generateFileName()
                         val filePath = if (downloadsDir?.exists() == true) {
@@ -90,35 +135,74 @@ class MainActivity : ComponentActivity() {
                         }
                     },
                     onStopClicked = {
-                        viewModel.stopRecordingAndProcess(apiEndpoint = "http://10.0.2.2:5000/upload")
+                        // ========================================
+                        // BACKEND: Parar gravação e mostrar diálogo de renomeação
+                        // ========================================
+                        //  MANTER: Comunicação com ViewModel para parar gravação
+                        viewModel.stopRecording()
                     },
                     onTestAPIClicked = {
+                        // ========================================
+                        // BACKEND: Teste de API
+                        // ========================================
+                        //  MANTER: Comunicação com ViewModel
                         viewModel.testAPI()
                     },
                     onTestBasicConnectivity = {
+                        // ========================================
+                        // BACKEND: Teste de conectividade
+                        // ========================================
+                        //  MANTER: Comunicação com ViewModel
                         viewModel.testBasicConnectivity()
                     },
-                    onFileClicked = { filePath ->
+                    onPlayClicked = { filePath ->
                         viewModel.playAudioFile(filePath)
                     },
-                    onPauseResumeClicked = {
-                        if (uiState.isPlaying) {
-                            viewModel.pausePlayback()
-                        } else {
-                            viewModel.resumePlayback()
-                        }
+                    onPauseClicked = {
+                        viewModel.pausePlayback()
+                    },
+                    onResumeClicked = {
+                        viewModel.resumePlayback()
                     },
                     onStopPlaybackClicked = {
                         viewModel.stopPlayback()
                     },
-                    onSeek = { timeMs ->
-                        viewModel.seekTo(timeMs)
+                    onSeek = { position ->
+                        viewModel.seekTo(position)
                     },
                     onRefreshFiles = {
                         val listFilesProvider: () -> List<File> = { listRecordedWavFiles() }
                         viewModel.loadWavFiles(listFilesProvider)
+                    },
+                    onFileClicked = { filePath ->
+                        viewModel.playAudioFile(filePath)
                     }
                 )
+                
+                // ========================================
+                // FRONTEND: Diálogo de renomeação
+                // ========================================
+                //  MANTER: Diálogo para renomear gravações antes de salvar
+                if (uiState.showRenameDialog && uiState.tempRecording != null) {
+                    RenameRecordingDialog(
+                        tempRecording = uiState.tempRecording!!,
+                        currentText = uiState.renameDialogText,
+                        isSaving = uiState.isSaving,
+                        onTextChange = { text ->
+                            viewModel.updateRenameText(text)
+                        },
+                        onConfirm = {
+                            viewModel.confirmRecordingName()
+                        },
+                        onCancel = {
+                            viewModel.cancelRecording()
+                        },
+                        onDismiss = {
+                            // Não permite fechar o diálogo clicando fora
+                            // O usuário deve confirmar ou cancelar
+                        }
+                    )
+                }
             }
         }
     }
@@ -190,16 +274,18 @@ private fun formatTime(milliseconds: Long): String {
 // 5. O Composable agora recebe o estado da UI e callbacks de evento
 @Composable
 fun AudioPlayerScreen(
-    uiState: MainViewModel.UiState,
+    uiState: UiState,
     onRecordClicked: () -> Unit,
     onStopClicked: () -> Unit,
     onTestAPIClicked: () -> Unit,
     onTestBasicConnectivity: () -> Unit,
-    onFileClicked: (String) -> Unit,
-    onPauseResumeClicked: () -> Unit,
+    onPlayClicked: (String) -> Unit,
+    onPauseClicked: () -> Unit,
+    onResumeClicked: () -> Unit,
     onStopPlaybackClicked: () -> Unit,
     onSeek: (Long) -> Unit,
-    onRefreshFiles: () -> Unit
+    onRefreshFiles: () -> Unit,
+    onFileClicked: (String) -> Unit
 ) {
     var isSeeking by remember { mutableStateOf(false) }
 
@@ -333,7 +419,7 @@ fun AudioPlayerScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceEvenly
                     ) {
-                        Button(onClick = onPauseResumeClicked) {
+                        Button(onClick = onPauseClicked) {
                             Text(text = if (uiState.isPlaying) "Pausar" else "Continuar")
                         }
                         Button(onClick = onStopPlaybackClicked) {

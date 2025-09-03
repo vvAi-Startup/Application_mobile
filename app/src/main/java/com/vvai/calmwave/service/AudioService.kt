@@ -1,4 +1,10 @@
-package com.vvai.calmwave
+package com.vvai.calmwave.service
+
+// ========================================
+// BACKEND: AUDIO SERVICE
+// ========================================
+// Este arquivo gerencia toda a lógica de áudio da aplicação
+//  MANTER: Core do sistema de áudio, Bluetooth e comunicação com API
 
 import android.content.Context
 import android.media.AudioFormat
@@ -18,6 +24,10 @@ import java.io.IOException
 import java.util.UUID
 
 class AudioService {
+    // ========================================
+    // BACKEND: Constantes e configurações
+    // ========================================
+    //  MANTER: Configurações de áudio e HTTP
     private val CHUNK_SIZE = 4096
     private val client = OkHttpClient.Builder()
         .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
@@ -25,6 +35,10 @@ class AudioService {
         .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
         .build()
 
+    // ========================================
+    // BACKEND: Variáveis de estado de áudio
+    // ========================================
+    //  MANTER: Controle de estado de reprodução
     private var audioTrack: AudioTrack? = null
     @Volatile private var isPlaying = false
     @Volatile private var isPaused = false
@@ -33,18 +47,28 @@ class AudioService {
     private var totalPlaybackDuration: Long = 0
     private var audioManager: AudioManager? = null
 
-    // Constantes de áudio
+    // ========================================
+    // BACKEND: Constantes de áudio
+    // ========================================
+    //  MANTER: Configurações de qualidade de áudio
     private val sampleRate = 44100
     private val channelConfig = AudioFormat.CHANNEL_OUT_MONO
     private val audioFormat = AudioFormat.ENCODING_PCM_16BIT
 
-    // Inicialização da classe com o contexto da aplicação
+    // ========================================
+    // BACKEND: Inicialização
+    // ========================================
+    //  MANTER: Setup inicial do serviço de áudio
     fun init(context: Context) {
         if (audioManager == null) {
             audioManager = context.applicationContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         }
     }
 
+    // ========================================
+    // BACKEND: Gerenciamento de Bluetooth SCO
+    // ========================================
+    //  MANTER: Controle de conexão Bluetooth para gravação
     fun startBluetoothSco() {
         audioManager?.let { manager ->
             manager.startBluetoothSco()
@@ -59,6 +83,10 @@ class AudioService {
         }
     }
 
+    // ========================================
+    // BACKEND: Configuração do AudioTrack
+    // ========================================
+    //  MANTER: Setup do sistema de reprodução de áudio
     private fun setupAudioTrack() {
         val bufferSize = AudioTrack.getMinBufferSize(sampleRate, channelConfig, audioFormat)
         
@@ -79,6 +107,10 @@ class AudioService {
         audioTrack?.play()
     }
 
+    // ========================================
+    // BACKEND: Limpeza e liberação de recursos
+    // ========================================
+    //  MANTER: Gerenciamento de recursos de áudio
     private fun stopAndReleaseAudioTrack() {
         // Limpa o estado de seek primeiro
         seekInProgress = false
@@ -666,7 +698,7 @@ class AudioService {
                 println("Corpo da resposta: $responseBody")
                 
                 if (response.isSuccessful) {
-                    println("✅ SERVIDOR RESPONDEU!")
+                    println(" SERVIDOR RESPONDEU!")
                     return@withContext true
                 } else {
                     println("❌ SERVIDOR RESPONDEU COM ERRO - Código: ${response.code}")
@@ -745,7 +777,7 @@ class AudioService {
                     println("Corpo da resposta: $responseBody")
                     
                     if (response.isSuccessful) {
-                        println("✅ CONEXÃO BEM-SUCEDIDA!")
+                        println(" CONEXÃO BEM-SUCEDIDA!")
                         return@withContext true
                     } else {
                         println("❌ FALHA NA CONEXÃO - Código: ${response.code}")
