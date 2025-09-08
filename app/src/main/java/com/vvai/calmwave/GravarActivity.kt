@@ -3,6 +3,7 @@ package com.vvai.calmwave
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.viewModels
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -41,10 +42,24 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.yield
 
 class GravarActivity : ComponentActivity() {
+    private val viewModel: MainViewModel by viewModels {
+        MainViewModelFactory(
+            audioService = AudioService(),
+            wavRecorder = WavRecorder(),
+            context = applicationContext
+        )
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             CalmWaveTheme {
+                val uiState by viewModel.uiState.collectAsState()
+                val isRecording = uiState.isRecording
+                val isPaused = uiState.isPaused
+                val wavFiles = uiState.wavFiles
+                val elapsedSeconds = uiState.currentPosition / 1000 // converte ms para segundos
+
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = Color(0xFFF7F7F7)
@@ -53,36 +68,14 @@ class GravarActivity : ComponentActivity() {
                     Box(modifier = Modifier.fillMaxSize()) {
                         // altura aproximada da BottomNavigationBar para evitar sobreposição
                         val bottomBarHeight = 72.dp
-                        // Estados no nível da Column para compartilhar entre botões e FAB
-                        var isRecording by remember { mutableStateOf(false) }
-                        var isPaused by remember { mutableStateOf(false) }
-                        // contador de segundos que será exibido e sincronizado com o estado de gravação
-                        var elapsedSeconds by remember { mutableStateOf(0L) }
 
-                        // Reseta o contador quando iniciar/encerrar
-                        LaunchedEffect(isRecording) {
-                            if (isRecording) {
-                                elapsedSeconds = 0L
-                            } else {
-                                elapsedSeconds = 0L
-                            }
-                        }
-
-                        // Incrementa o contador apenas enquanto grava e não estiver pausado
-                        LaunchedEffect(isRecording, isPaused) {
-                            if (isRecording && !isPaused) {
-                                while (isActive && isRecording && !isPaused) {
-                                    delay(1000L)
-                                    elapsedSeconds += 1L
-                                }
-                            }
-                        }
+                        // Remova os LaunchedEffect que manipulam isRecording, isPaused, elapsedSeconds localmente
 
                         Column(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .padding(bottom = bottomBarHeight), // restaurado padding original
-                            horizontalAlignment = Alignment.CenterHorizontally
+                                .padding(bottom = bottomBarHeight),
+                            horizontalAlignment = Alignment.CenterHorizontally // CORRIGIDO
                         ) {
                             // Header customizado com canto inferior arredondado
                             Box(
@@ -139,9 +132,9 @@ class GravarActivity : ComponentActivity() {
                                     painter = painterResource(id = R.drawable.menina_nuvem),
                                     contentDescription = "Fundo de gravação",
                                     modifier = Modifier
-                                        .fillMaxWidth() // ocupa completamente as laterais
-                                        .fillMaxHeight(0.75f) // ocupa a parte inferior
-                                        .align(Alignment.BottomCenter), // desloca a imagem 24.dp para baixo
+                                        .fillMaxWidth()
+                                        .fillMaxHeight(0.75f)
+                                        .align(Alignment.BottomCenter),
                                     contentScale = ContentScale.Crop
                                 )
 
@@ -150,23 +143,23 @@ class GravarActivity : ComponentActivity() {
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .padding(20.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    horizontalAlignment = Alignment.CenterHorizontally, // CORRIGIDO
                                     verticalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) { // CORRIGIDO
                                         Text(
                                             text = "Calm Wave",
                                             style = MaterialTheme.typography.titleLarge,
                                             fontSize = 20.sp,
                                             fontWeight = FontWeight.Bold,
-                                            color = Color(0xFF0B6B63) // trocado para verde
+                                            color = Color(0xFF0B6B63)
                                         )
                                         Text(
                                             text = "Acompanhe a sua gravação",
                                             style = MaterialTheme.typography.bodyMedium,
                                             fontSize = 16.sp,
                                             modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
-                                            color = Color(0xFF0B6B63).copy(alpha = 0.9f) // subtítulo em verde
+                                            color = Color(0xFF0B6B63).copy(alpha = 0.9f)
                                         )
 
                                         // Contador sincronizado com a gravação
@@ -214,10 +207,11 @@ class GravarActivity : ComponentActivity() {
                             if (!isRecording) {
                                 Button(
                                     onClick = {
-                                        // inicia nova gravação: reseta o tempo e começa
-                                        elapsedSeconds = 0L
-                                        isPaused = false
-                                        isRecording = true
+                                        // Inicia gravação
+                                        val filePath = /* gere o caminho do arquivo .wav, por exemplo: */
+    "${applicationContext.getExternalFilesDir(null)?.absolutePath}/audio_${System.currentTimeMillis()}.wav"
+
+viewModel.startRecording(filePath)
                                     },
                                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF12B089)),
                                     shape = RoundedCornerShape(40.dp),
@@ -235,10 +229,8 @@ class GravarActivity : ComponentActivity() {
                                 // Encerrar arredondado
                                 Button(
                                     onClick = {
-                                        // para a gravação e reseta o contador
-                                        isRecording = false
-                                        isPaused = false
-                                        elapsedSeconds = 0L
+                                        // Encerra gravação
+                                        viewModel.stopRecordingAndProcess("")
                                     },
                                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0B6B63)),
                                     shape = RoundedCornerShape(40.dp),
@@ -257,7 +249,7 @@ class GravarActivity : ComponentActivity() {
 
                                 // Pausar / Continuar arredondado
                                 Button(
-                                    onClick = { isPaused = !isPaused },
+                                    onClick = {},
                                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF12B089)),
                                     shape = RoundedCornerShape(40.dp),
                                     modifier = Modifier
