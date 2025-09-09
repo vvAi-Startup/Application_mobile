@@ -60,16 +60,21 @@ class GravarActivity : ComponentActivity() {
                 val wavFiles = uiState.wavFiles
                 val elapsedSeconds = uiState.currentPosition / 1000 // converte ms para segundos
 
+                // LaunchedEffect para atualizar o tempo de gravação
+                LaunchedEffect(isRecording, isPaused) {
+                    while (isRecording && !isPaused) {
+                        viewModel.incrementCurrentPosition(1000) // incrementa 1 segundo (1000 ms)
+                        kotlinx.coroutines.delay(1000)
+                    }
+                }
+
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = Color(0xFFF7F7F7)
                 ) {
-                    // Box para sobrepor barra de navegação fixa no fundo
                     Box(modifier = Modifier.fillMaxSize()) {
                         // altura aproximada da BottomNavigationBar para evitar sobreposição
                         val bottomBarHeight = 72.dp
-
-                        // Remova os LaunchedEffect que manipulam isRecording, isPaused, elapsedSeconds localmente
 
                         Column(
                             modifier = Modifier
@@ -208,10 +213,8 @@ class GravarActivity : ComponentActivity() {
                                 Button(
                                     onClick = {
                                         // Inicia gravação
-                                        val filePath = /* gere o caminho do arquivo .wav, por exemplo: */
-    "${applicationContext.getExternalFilesDir(null)?.absolutePath}/audio_${System.currentTimeMillis()}.wav"
-
-viewModel.startRecording(filePath)
+                                        val filePath = "${applicationContext.getExternalFilesDir(null)?.absolutePath}/audio_${System.currentTimeMillis()}.wav"
+                                        viewModel.startRecording(filePath)
                                     },
                                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF12B089)),
                                     shape = RoundedCornerShape(40.dp),
@@ -249,7 +252,15 @@ viewModel.startRecording(filePath)
 
                                 // Pausar / Continuar arredondado
                                 Button(
-                                    onClick = {},
+                                    onClick = {
+                                        if (isPaused) {
+                                            // Retomar gravação
+                                            viewModel.resumeRecording()
+                                        } else {
+                                            // Pausar gravação
+                                            viewModel.pauseRecording()
+                                        }
+                                    },
                                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF12B089)),
                                     shape = RoundedCornerShape(40.dp),
                                     modifier = Modifier

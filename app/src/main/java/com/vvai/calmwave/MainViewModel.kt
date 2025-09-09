@@ -112,7 +112,8 @@ class MainViewModel(
             _uiState.value = _uiState.value.copy(
                 isRecording = false,
                 isProcessing = true,
-                statusText = "Parando gravação e processando..."
+                statusText = "Parando gravação e processando...",
+                currentPosition = 0 // Resetar contador ao encerrar
             )
             try {
                 wavRecorder.stopRecording()
@@ -125,7 +126,7 @@ class MainViewModel(
                         apiEndpoint = apiEndpoint
                     )
                     _uiState.value = _uiState.value.copy(
-                        statusText = "Gravação processada com sucesso!"
+                        statusText = "Áudio salvo com sucesso!"
                     )
                 } else {
                     _uiState.value = _uiState.value.copy(
@@ -227,6 +228,13 @@ class MainViewModel(
         }
     }
     
+    // Incrementa o tempo atual de gravação (em ms)
+    fun incrementCurrentPosition(deltaMs: Long) {
+        _uiState.value = _uiState.value.copy(
+            currentPosition = _uiState.value.currentPosition + deltaMs
+        )
+    }
+
     // Função para testar a API manualmente
     fun testAPI() {
         viewModelScope.launch {
@@ -315,6 +323,16 @@ class MainViewModel(
                 }
             }
         }
+    }
+
+    // Pausa a gravação
+    fun pauseRecording() {
+        _uiState.value = _uiState.value.copy(isPaused = true)
+    }
+
+    // Retoma a gravação
+    fun resumeRecording() {
+        _uiState.value = _uiState.value.copy(isPaused = false)
     }
 }
 
