@@ -23,6 +23,7 @@ class WavRecorder {
 
     private var audioRecorder: AudioRecord? = null
     @Volatile private var isRecording = false // Usar @Volatile para garantir visibilidade entre threads
+    @Volatile private var isPaused = false // NOVO
     
     // Callback para enviar chunks em tempo real
     private var chunkCallback: ((ByteArray, Int) -> Unit)? = null
@@ -34,6 +35,7 @@ class WavRecorder {
     suspend fun startRecording(filePath: String) {
         val outputFile = File(filePath)
         isRecording = true
+        isPaused = false // NOVO
 
         val minBufferSize = AudioRecord.getMinBufferSize(
             AudioConstants.SAMPLE_RATE,
@@ -64,11 +66,15 @@ class WavRecorder {
                     var lastChunkTime = System.currentTimeMillis()
                     val chunkIntervalMs = 5000L // 5 segundos
 
-                                         while (isRecording) {
-                         val bytesRead = audioRecorder?.read(audioData, 0, bufferSize) ?: 0
-                         if (bytesRead > 0) {
-                             fileOutputStream.write(audioData, 0, bytesRead)
-                             
+                    while (isRecording) {
+                        if (isPaused) {
+                            Thread.sleep(100) // Aguarda enquanto pausado
+                            continue
+                        }
+                        val bytesRead = audioRecorder?.read(audioData, 0, bufferSize) ?: 0
+                        if (bytesRead > 0) {
+                            fileOutputStream.write(audioData, 0, bytesRead)
+                            
                              // Acumula dados para envio em chunks
                              accumulatedData += audioData.copyOf(bytesRead)
                              
@@ -108,6 +114,14 @@ class WavRecorder {
 
     fun stopRecording() {
         isRecording = false
+    }
+
+    fun pauseRecording() {
+        isPaused = true
+    }
+
+    fun resumeRecording() {
+        isPaused = false
     }
 
     private fun writeWavHeader(fileOutputStream: FileOutputStream) {

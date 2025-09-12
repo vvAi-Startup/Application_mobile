@@ -283,7 +283,11 @@ class GravarActivity : ComponentActivity() {
 
                         BottomNavigationBar(
                             selected = "Gravação",
-                            modifier = Modifier.align(Alignment.BottomCenter)
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFF222222))
+                                .padding(vertical = 12.dp)
+                                .align(Alignment.BottomCenter)
                         )
                     }
                 }

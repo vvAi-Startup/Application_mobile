@@ -327,11 +327,13 @@ class MainViewModel(
 
     // Pausa a gravação
     fun pauseRecording() {
+        wavRecorder.pauseRecording()
         _uiState.value = _uiState.value.copy(isPaused = true)
     }
 
     // Retoma a gravação
     fun resumeRecording() {
+        wavRecorder.resumeRecording()
         _uiState.value = _uiState.value.copy(isPaused = false)
     }
 }

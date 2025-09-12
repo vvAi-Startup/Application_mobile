@@ -58,6 +58,9 @@ dependencies {
     implementation(libs.androidx.material3)
     // Material icons (extended) - provides Icons.Filled.Pause / PlayArrow
     implementation("androidx.compose.material:material-icons-extended")
+    // ExoPlayer Media3 (versão mais recente recomendada)
+    implementation("androidx.media3:media3-exoplayer:1.8.0")
+    implementation("androidx.media3:media3-ui:1.8.0")
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
