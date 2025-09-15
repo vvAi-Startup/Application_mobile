@@ -315,8 +315,10 @@ class PlaylistActivity : ComponentActivity() {
                                                 },
                                                 onClick = {
                                                     playlistFilter = item.title
-                                                    // Não altera selectedTab!
+                                                    // Muda automaticamente para aba de Áudios
+                                                    selectedTab = "Áudios"
                                                     onlyFavorites = false
+                                                    // também garantir que a lista de áudios selecione o item, se necessário
                                                 },
                                                 onRename = { newName ->
                                                     val idx =
