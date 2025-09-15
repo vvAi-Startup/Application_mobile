@@ -29,6 +29,8 @@ import com.vvai.calmwave.components.BottomNavigationBar
 import com.vvai.calmwave.components.TopBar
 import com.vvai.calmwave.ui.components.PlaylistComponents.PlaylistCard
 import com.vvai.calmwave.ui.components.PlaylistComponents.PlaylistTabs
+import com.vvai.calmwave.ui.components.PlaylistComponents.PlaylistSelectionDialog
+import com.vvai.calmwave.ui.components.PlaylistComponents.FilterSheet
 import java.io.File
 
 class PlaylistActivity : ComponentActivity() {
@@ -734,159 +736,34 @@ class PlaylistActivity : ComponentActivity() {
                 // Playlist assignment dialog (outside player modal so it appears immediately)
                 if (showPlaylistDialogForAudio != null) {
                     val currentPlaylist = audioToPlaylistMap[showPlaylistDialogForAudio!!.absolutePath]
+                    // delegate to reusable composable
                     key(showPlaylistDialogForAudio!!.absolutePath) {
-                        AlertDialog(
-                            onDismissRequest = { showPlaylistDialogForAudio = null },
-                            title = { Text("Escolha a playlist") },
-                            text = {
-                                Column {
-                                    playlists.forEach { playlist ->
-                                        val isCurrent = playlist.title == currentPlaylist
-                                        TextButton(
-                                            onClick = {
-                                                if (!isCurrent) {
-                                                    audioToPlaylistMap[showPlaylistDialogForAudio!!.absolutePath] = playlist.title
-                                                    savePlaylists()
-                                                }
-                                                showPlaylistDialogForAudio = null
-                                            },
-                                            enabled = !isCurrent
-                                        ) {
-                                            Text(
-                                                playlist.title + if (isCurrent) " (atual)" else "",
-                                                color = if (isCurrent) Color.Gray else Color.Unspecified
-                                            )
-                                        }
-                                    }
-                                }
+                        PlaylistSelectionDialog(
+                            playlists = playlists.map { it.title },
+                            current = currentPlaylist,
+                            onSelect = { selectedTitle ->
+                                audioToPlaylistMap[showPlaylistDialogForAudio!!.absolutePath] = selectedTitle
+                                savePlaylists()
+                                showPlaylistDialogForAudio = null
                             },
-                            confirmButton = {},
-                            dismissButton = {
-                                TextButton(onClick = { showPlaylistDialogForAudio = null }) {
-                                    Text("Cancelar")
-                                }
-                            }
+                            onDismiss = { showPlaylistDialogForAudio = null }
                         )
                     }
                 }
 
-                // Filter BottomSheet (outside player modal)
+                // Filter BottomSheet delegated to a reusable component
                 if (showFilterMenu) {
-                    var tempOnlyFavorites by remember { mutableStateOf(onlyFavorites) }
-                    var tempPlaylistFilter by remember { mutableStateOf(playlistFilter) }
-                    var expandedPlaylistDropdown by remember { mutableStateOf(false) }
-                    val sheetColor = Color(0xFF2DC9C6)
-                    ModalBottomSheet(
-                        onDismissRequest = { showFilterMenu = false },
-                        modifier = Modifier.fillMaxWidth(),
-                        containerColor = sheetColor,
-                        content = {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp)
-                            ) {
-                                Text(
-                                    text = "Filtros",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
-                                )
-                                Spacer(modifier = Modifier.height(12.dp))
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Checkbox(
-                                        checked = tempOnlyFavorites,
-                                        onCheckedChange = { tempOnlyFavorites = it },
-                                        colors = CheckboxDefaults.colors(
-                                            checkedColor = Color.White,
-                                            uncheckedColor = Color.White
-                                        )
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text("Apenas favoritos", color = Color.White)
-                                }
-                                Spacer(modifier = Modifier.height(12.dp))
-                                Text("Playlist:", color = Color.White)
-                                ExposedDropdownMenuBox(
-                                    expanded = expandedPlaylistDropdown,
-                                    onExpandedChange = {
-                                        expandedPlaylistDropdown = !expandedPlaylistDropdown
-                                    }
-                                ) {
-                                    OutlinedTextField(
-                                        value = tempPlaylistFilter ?: "Todas",
-                                        onValueChange = {},
-                                        readOnly = true,
-                                        label = { Text("Playlist") },
-                                        trailingIcon = {
-                                            ExposedDropdownMenuDefaults.TrailingIcon(
-                                                expanded = expandedPlaylistDropdown
-                                            )
-                                        },
-                                        modifier = Modifier.menuAnchor().fillMaxWidth(),
-                                        colors = OutlinedTextFieldDefaults.colors(
-                                            unfocusedBorderColor = Color.White,
-                                            focusedBorderColor = Color.White,
-                                            cursorColor = Color.White,
-                                            unfocusedContainerColor = Color.White.copy(alpha = 0.12f),
-                                            focusedContainerColor = Color.White.copy(alpha = 0.12f),
-                                            unfocusedLabelColor = Color.White,
-                                            focusedLabelColor = Color.White
-                                        )
-                                    )
-                                    ExposedDropdownMenu(
-                                        expanded = expandedPlaylistDropdown,
-                                        onDismissRequest = { expandedPlaylistDropdown = false }
-                                    ) {
-                                        DropdownMenuItem(
-                                            text = { Text("Todas", color = Color.White) },
-                                            onClick = {
-                                                tempPlaylistFilter = null
-                                                expandedPlaylistDropdown = false
-                                            }
-                                        )
-                                        playlists.forEach { playlist ->
-                                            DropdownMenuItem(
-                                                text = {
-                                                    Text(
-                                                        playlist.title,
-                                                        color = Color.White
-                                                    )
-                                                },
-                                                onClick = {
-                                                    tempPlaylistFilter = playlist.title
-                                                    expandedPlaylistDropdown = false
-                                                }
-                                            )
-                                        }
-                                    }
-                                }
-                                Spacer(modifier = Modifier.height(16.dp))
-                                Row(
-                                    horizontalArrangement = Arrangement.End,
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    TextButton(onClick = {
-                                        showFilterMenu = false
-                                    }) { Text("Cancelar", color = Color.White) }
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Button(
-                                        onClick = {
-                                            onlyFavorites = tempOnlyFavorites
-                                            playlistFilter = tempPlaylistFilter
-                                            showFilterMenu = false
-                                        },
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = Color.White.copy(
-                                                alpha = 0.12f
-                                            )
-                                        )
-                                    ) {
-                                        Text("Aplicar", color = Color.White)
-                                    }
-                                }
-                            }
-                        })
+                    FilterSheet(
+                        playlists = playlists.map { it.title },
+                        initialOnlyFavorites = onlyFavorites,
+                        initialPlaylist = playlistFilter,
+                        onApply = { onlyFavs, selectedPlaylist ->
+                            onlyFavorites = onlyFavs
+                            playlistFilter = selectedPlaylist
+                            showFilterMenu = false
+                        },
+                        onDismiss = { showFilterMenu = false }
+                    )
                 }
 
                     // Bottom Navigation Bar
