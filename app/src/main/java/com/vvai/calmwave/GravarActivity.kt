@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.vvai.calmwave.components.BottomNavigationBar
+import com.vvai.calmwave.components.TopBar
 import com.vvai.calmwave.ui.theme.CalmWaveTheme
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.layout.ContentScale
@@ -83,45 +84,8 @@ class GravarActivity : ComponentActivity() {
                             horizontalAlignment = Alignment.CenterHorizontally // CORRIGIDO
                         ) {
                             // Header customizado com canto inferior arredondado
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(112.dp)
-                                    .clip(RoundedCornerShape(bottomStart = 18.dp, bottomEnd = 18.dp))
-                                    .background(Color(0xFFE8FFFB))
-                                    .padding(horizontal = 20.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxSize(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = "Gravação",
-                                        style = MaterialTheme.typography.titleLarge,
-                                        fontSize = 22.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF0B6B63)
-                                    )
-                                    // Avatar circular (placeholder com ícone)
-                                    Box(
-                                        modifier = Modifier
-                                            .size(40.dp)
-                                            .clip(RoundedCornerShape(20.dp))
-                                            .background(Color.White),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.Person,
-                                            contentDescription = "Avatar",
-                                            tint = Color(0xFF0B6B63),
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    }
-                                }
-                            }
+                            // Usando o componente TopBar reutilizável
+                            TopBar(title = "Gravação")
 
                             Spacer(modifier = Modifier.height(18.dp))
 
