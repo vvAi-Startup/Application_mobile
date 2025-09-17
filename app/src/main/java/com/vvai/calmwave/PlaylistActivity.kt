@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -23,8 +24,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.border
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.sp
 import com.vvai.calmwave.components.BottomNavigationBar
 import com.vvai.calmwave.components.TopBar
 import com.vvai.calmwave.ui.components.PlaylistComponents.PlaylistCard
@@ -32,6 +38,7 @@ import com.vvai.calmwave.ui.components.PlaylistComponents.PlaylistTabs
 import com.vvai.calmwave.ui.components.PlaylistComponents.PlaylistSelectionDialog
 import com.vvai.calmwave.ui.components.PlaylistComponents.FilterSheet
 import java.io.File
+import com.vvai.calmwave.R
 
 class PlaylistActivity : ComponentActivity() {
     private lateinit var exoPlayerAudioPlayer: ExoPlayerAudioPlayer
@@ -56,6 +63,14 @@ class PlaylistActivity : ComponentActivity() {
             )
 
             val playlists = remember { mutableStateListOf<PlaylistItem>() }
+            // cores disponíveis para criação de playlist
+            val availableColors = listOf(
+                Color(0xFF6FAF9E),
+                Color(0xFF4B5563),
+                Color(0xFFF29345),
+                Color(0xFF2DC9C6),
+                Color(0xFF8EEAE7)
+            )
             val audioToPlaylistMap = remember { mutableStateMapOf<String, String>() }
             val favoriteIds = remember { mutableStateListOf<Int>() }
             var onlyFavorites by remember { mutableStateOf(false) }
@@ -98,23 +113,7 @@ class PlaylistActivity : ComponentActivity() {
                         }
                     }
                 } else {
-                    playlists.addAll(
-                        listOf(
-                            PlaylistItem(
-                                0,
-                                "Na paz pelas ruas",
-                                "22/100 ÁUDIOS",
-                                Color(0xFF6FAF9E)
-                            ),
-                            PlaylistItem(1, "Lost in sound", "22/100 ÁUDIOS", Color(0xFF4B5563)),
-                            PlaylistItem(
-                                2,
-                                "Matemática | 3º bim...",
-                                "22/100 ÁUDIOS",
-                                Color(0xFFF29345)
-                            )
-                        )
-                    )
+                    // não carregar playlists padrão — começar com lista vazia e instruir o usuário a criar
                 }
                 val audioMapJson = prefs.getString("audioToPlaylistMap", null)
                 audioToPlaylistMap.clear()
@@ -144,13 +143,15 @@ class PlaylistActivity : ComponentActivity() {
                     Box(modifier = Modifier.weight(1f)) {
                         Column(
                             modifier = Modifier
-                                .fillMaxSize()
-                                .padding(top = 16.dp),
+                                .fillMaxSize(), // removido .padding(top = 16.dp) para colar a TopBar no topo
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             // Top Bar
-                            TopBar(title = "Playlists")
-                            Spacer(modifier = Modifier.height(16.dp))
+                            // colar a TopBar no topo da tela respeitando a barra de status
+                            TopBar(title = "Playlists", modifier = Modifier
+                                .fillMaxWidth()
+                                .statusBarsPadding()
+                            )
                             // Tabs and Search
                             Row(
                                 modifier = Modifier
@@ -296,53 +297,78 @@ class PlaylistActivity : ComponentActivity() {
                                     if (onlyFavorites) filteredBySearch.filter { favoriteIds.contains(it.id) } else filteredBySearch
                                 var showAddDialog by remember { mutableStateOf(false) }
                                 var newPlaylistName by remember { mutableStateOf("") }
+                                var selectedColor by remember { mutableStateOf(availableColors.first()) }
                                 Box(Modifier.fillMaxSize()) {
-                                    LazyColumn(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 16.dp)
-                                            .fillMaxHeight(),
-                                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                                    ) {
-                                        items(displayed, key = { it.id }) { item ->
-                                            PlaylistCard(
-                                                title = item.title,
-                                                subtitle = item.subtitle,
-                                                color = item.color,
-                                                isFavorite = favoriteIds.contains(item.id),
-                                                onFavoriteToggle = {
-                                                    if (favoriteIds.contains(item.id)) favoriteIds.remove(
-                                                        item.id
-                                                    ) else favoriteIds.add(item.id)
-                                                },
-                                                onClick = {
-                                                    playlistFilter = item.title
-                                                    // Muda automaticamente para aba de Áudios
-                                                    selectedTab = "Áudios"
-                                                    onlyFavorites = false
-                                                    // também garantir que a lista de áudios selecione o item, se necessário
-                                                },
-                                                onRename = { newName ->
-                                                    val idx =
-                                                        playlists.indexOfFirst { it.id == item.id }
-                                                    if (idx >= 0) {
-                                                        val oldName = playlists[idx].title
-                                                        playlists[idx] =
-                                                            playlists[idx].copy(title = newName)
-                                                        val updated =
-                                                            audioToPlaylistMap.mapValues { (k, v) -> if (v == oldName) newName else v }
-                                                        audioToPlaylistMap.clear()
-                                                        audioToPlaylistMap.putAll(updated)
-                                                    }
-                                                },
-                                                onDelete = {
-                                                    val playlistName = item.title
-                                                    playlists.removeAll { it.id == item.id }
-                                                    val toRemove =
-                                                        audioToPlaylistMap.filterValues { it == playlistName }.keys.toList()
-                                                    toRemove.forEach { audioToPlaylistMap.remove(it) }
-                                                }
+                                    if (displayed.isEmpty()) {
+                                        // tela vazia amigável para crianças
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .padding(horizontal = 24.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.Center
+                                        ) {
+                                            Image(
+                                                painter = painterResource(id = R.drawable.disc),
+                                                contentDescription = "Disco",
+                                                modifier = Modifier.size(120.dp)
                                             )
+                                            Spacer(modifier = Modifier.height(12.dp))
+                                            Text(
+                                                text = "Está vazio!",
+                                                style = MaterialTheme.typography.titleLarge,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Spacer(modifier = Modifier.height(6.dp))
+                                            Text(
+                                                text = "Toque no + para criar uma playlist",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = Color(0xFF6B6B6B)
+                                            )
+                                        }
+                                    } else {
+                                        LazyColumn(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 16.dp)
+                                                .fillMaxHeight(),
+                                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                                        ) {
+                                            items(displayed, key = { it.id }) { item ->
+                                                PlaylistCard(
+                                                    title = item.title,
+                                                    subtitle = item.subtitle,
+                                                    color = item.color,
+                                                    isFavorite = favoriteIds.contains(item.id),
+                                                    onFavoriteToggle = {
+                                                        if (favoriteIds.contains(item.id)) favoriteIds.remove(
+                                                            item.id
+                                                        ) else favoriteIds.add(item.id)
+                                                    },
+                                                    onClick = {
+                                                        playlistFilter = item.title
+                                                        // Muda automaticamente para aba de Áudios
+                                                        selectedTab = "Áudios"
+                                                        onlyFavorites = false
+                                                    },
+                                                    onRename = { newName ->
+                                                        val idx = playlists.indexOfFirst { it.id == item.id }
+                                                        if (idx >= 0) {
+                                                            val oldName = playlists[idx].title
+                                                            playlists[idx] = playlists[idx].copy(title = newName)
+                                                            val updated = audioToPlaylistMap.mapValues { (k, v) -> if (v == oldName) newName else v }
+                                                            audioToPlaylistMap.clear()
+                                                            audioToPlaylistMap.putAll(updated)
+                                                        }
+                                                    },
+                                                    onDelete = {
+                                                        val playlistName = item.title
+                                                        playlists.removeAll { it.id == item.id }
+                                                        val toRemove = audioToPlaylistMap.filterValues { it == playlistName }.keys.toList()
+                                                        toRemove.forEach { audioToPlaylistMap.remove(it) }
+                                                    }
+                                                )
+                                            }
                                         }
                                     }
                                     FloatingActionButton(
@@ -360,34 +386,48 @@ class PlaylistActivity : ComponentActivity() {
                                             onDismissRequest = { showAddDialog = false },
                                             title = { Text("Nova Playlist") },
                                             text = {
-                                                OutlinedTextField(
-                                                    value = newPlaylistName,
-                                                    onValueChange = { newPlaylistName = it },
-                                                    label = { Text("Nome da playlist") }
-                                                )
+                                                Column {
+                                                    OutlinedTextField(
+                                                        value = newPlaylistName,
+                                                        onValueChange = { newPlaylistName = it },
+                                                        label = { Text("Nome da playlist") }
+                                                    )
+                                                    Spacer(modifier = Modifier.height(12.dp))
+                                                    Text(text = "Escolha a cor:", style = MaterialTheme.typography.bodyMedium)
+                                                    Spacer(modifier = Modifier.height(8.dp))
+                                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                        availableColors.forEach { c ->
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .size(36.dp)
+                                                                    .clip(CircleShape)
+                                                                    .background(c)
+                                                                    .border(
+                                                                        width = if (selectedColor == c) 3.dp else 1.dp,
+                                                                        color = if (selectedColor == c) Color.White else Color.Transparent,
+                                                                        shape = CircleShape
+                                                                    )
+                                                                    .clickable { selectedColor = c }
+                                                            )
+                                                        }
+                                                    }
+                                                }
                                             },
                                             confirmButton = {
                                                 TextButton(onClick = {
                                                     if (newPlaylistName.isNotBlank()) {
                                                         val nextId =
                                                             (playlists.maxOfOrNull { it.id } ?: 0) + 1
-                                                        val colors = listOf(
-                                                            Color(0xFF6FAF9E),
-                                                            Color(0xFF4B5563),
-                                                            Color(0xFFF29345),
-                                                            Color(0xFF2DC9C6),
-                                                            Color(0xFF8EEAE7)
-                                                        )
-                                                        val color = colors.random()
                                                         playlists.add(
                                                             PlaylistItem(
                                                                 nextId,
                                                                 newPlaylistName,
-                                                                "0/100 ÁUDIOS",
-                                                                color
+                                                                "0/0 ÁUDIOS",
+                                                                selectedColor
                                                             )
                                                         )
                                                         newPlaylistName = ""
+                                                        selectedColor = availableColors.first()
                                                         showAddDialog = false
                                                     }
                                                 }) { Text("Criar") }

@@ -14,9 +14,9 @@ import androidx.compose.foundation.Image
 import com.vvai.calmwave.R
 
 @Composable
-fun TopBar(title: String) {
+fun TopBar(title: String, modifier: Modifier = Modifier) {
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .background(Color(0xFFE6F7FA))
             .padding(vertical = 12.dp)

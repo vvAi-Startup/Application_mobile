@@ -1,5 +1,6 @@
 package com.vvai.calmwave.ui.components.PlaylistComponents
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -16,10 +17,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.vvai.calmwave.R
 
 
 @Composable
@@ -59,12 +63,22 @@ fun PlaylistCard(
         ) {
             Row(modifier = Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
                 val thumbGradient = Brush.horizontalGradient(listOf(color, lerp(color, Color.Black, 0.12f)))
+                // thumbnail: fundo colorido com imagem de disco vinda de res/drawable/disc.png
                 Box(
                     modifier = Modifier
                         .size(80.dp)
                         .clip(RoundedCornerShape(8.dp))
                         .background(brush = thumbGradient)
-                )
+                ) {
+                    Image(
+                        painter = painterResource(id = R.drawable.disc),
+                        contentDescription = "Disco",
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(8.dp),
+                        contentScale = ContentScale.Fit
+                    )
+                }
 
                 Spacer(modifier = Modifier.width(16.dp))
 
