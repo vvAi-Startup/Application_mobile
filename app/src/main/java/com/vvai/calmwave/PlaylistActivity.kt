@@ -335,9 +335,10 @@ class PlaylistActivity : ComponentActivity() {
                                             verticalArrangement = Arrangement.spacedBy(12.dp)
                                         ) {
                                             items(displayed, key = { it.id }) { item ->
+                                                // subtitle agora calculado dinamicamente: audios atribuídos / total de áudios
                                                 PlaylistCard(
                                                     title = item.title,
-                                                    subtitle = item.subtitle,
+                                                    subtitle = "${audioToPlaylistMap.values.count { it == item.title }}/${wavFiles.size} ÁUDIOS",
                                                     color = item.color,
                                                     isFavorite = favoriteIds.contains(item.id),
                                                     onFavoriteToggle = {
@@ -422,7 +423,7 @@ class PlaylistActivity : ComponentActivity() {
                                                             PlaylistItem(
                                                                 nextId,
                                                                 newPlaylistName,
-                                                                "0/0 ÁUDIOS",
+                                                                "${0}/${wavFiles.size} ÁUDIOS",
                                                                 selectedColor
                                                             )
                                                         )
