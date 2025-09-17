@@ -170,7 +170,7 @@ class PlaylistActivity : ComponentActivity() {
                                     placeholder = { Text("Buscar") },
                                     modifier = Modifier
                                         .weight(1f)
-                                        .height(40.dp),
+                                        .defaultMinSize(minHeight = 56.dp), // aumenta mínimo para evitar clipping do texto
                                     shape = MaterialTheme.shapes.small,
                                     colors = OutlinedTextFieldDefaults.colors(
                                         unfocusedBorderColor = activeColor,
