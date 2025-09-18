@@ -16,6 +16,14 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // BuildConfig fields from environment variables
+        val apiBaseUrl = System.getenv("API_BASE_URL") ?: "http://10.0.2.2:5000"
+        val wsBaseUrl = System.getenv("WS_BASE_URL") ?: "ws://10.0.2.2:5000"
+        val dbBaseUrl = System.getenv("DB_BASE_URL") ?: "http://10.0.2.2:5432"
+        buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
+        buildConfigField("String", "WS_BASE_URL", "\"$wsBaseUrl\"")
+        buildConfigField("String", "DB_BASE_URL", "\"$dbBaseUrl\"")
     }
 
     buildTypes {
@@ -39,6 +47,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.8"

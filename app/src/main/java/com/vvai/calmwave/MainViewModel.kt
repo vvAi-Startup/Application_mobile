@@ -61,9 +61,16 @@ class MainViewModel(
             audioService.stopPlayback()
 
             try {
-                // Configura o callback para enviar chunks em tempo real
-                val sessionId = java.util.UUID.randomUUID().toString()
-                val apiEndpoint = "http://10.0.2.2:5000/upload"
+                // Configura conexão WebSocket e callback para envio de chunks
+                val wsUrl = Config.wsStreamUrl
+                audioService.connectWebSocket(wsUrl, context,
+                    onConnected = {
+                        println("WebSocket conectado")
+                    },
+                    onFailure = { e ->
+                        println("Falha no WebSocket: ${e.message}")
+                    }
+                )
                 
                 wavRecorder.setChunkCallback { chunkData, chunkIndex ->
                     viewModelScope.launch {
@@ -71,19 +78,14 @@ class MainViewModel(
                         
                         // Atualiza o status para mostrar que está enviando chunk
                         _uiState.value = _uiState.value.copy(
-                            statusText = "Enviando chunk ${chunkIndex + 1} para API..."
+                            statusText = "Enviando chunk ${chunkIndex + 1} via WebSocket..."
                         )
                         
-                        audioService.sendChunkToAPI(
-                            chunkData = chunkData,
-                            sessionId = sessionId,
-                            chunkIndex = chunkIndex,
-                            apiEndpoint = apiEndpoint
-                        )
+                        audioService.sendAudioChunkViaWebSocket(chunkData)
                         
                         // Atualiza o status de volta para gravação
                         _uiState.value = _uiState.value.copy(
-                            statusText = "Gravando... (próximo chunk em 5s)"
+                            statusText = "Gravando... (próximo chunk em 10s)"
                         )
                     }
                 }
@@ -93,9 +95,7 @@ class MainViewModel(
                 wavRecorder.startRecording(filePath)
                 currentRecordingPath = filePath
                 
-                _uiState.value = _uiState.value.copy(
-                    statusText = "Gravando... (primeiro chunk será enviado em 5s)"
-                )
+                _uiState.value = _uiState.value.copy(statusText = "Gravando... (primeiro chunk será enviado em 10s)")
             } catch (e: Exception) {
                 e.printStackTrace()
                 _uiState.value = _uiState.value.copy(
@@ -118,13 +118,11 @@ class MainViewModel(
             try {
                 wavRecorder.stopRecording()
                 audioService.stopBluetoothSco()
+                // Desconecta WS e finaliza arquivo processado
+                audioService.disconnectWebSocket()
 
                 val audioFile = currentRecordingPath?.let { File(it) }
                 if (audioFile?.exists() == true) {
-                    audioService.sendAndPlayWavFile(
-                        filePath = audioFile.absolutePath,
-                        apiEndpoint = apiEndpoint
-                    )
                     _uiState.value = _uiState.value.copy(
                         statusText = "Áudio salvo com sucesso!"
                     )
@@ -242,7 +240,7 @@ class MainViewModel(
                 statusText = "Testando conexão com API..."
             )
             
-            val apiEndpoint = "http://10.0.2.2:5000/upload"
+            val apiEndpoint = Config.uploadUrl
             val result = audioService.testAPIConnection(apiEndpoint)
             
             _uiState.value = _uiState.value.copy(
@@ -258,7 +256,7 @@ class MainViewModel(
                 statusText = "Testando conectividade básica..."
             )
             
-            val apiEndpoint = "http://10.0.2.2:5000/upload"
+            val apiEndpoint = Config.uploadUrl
             val result = audioService.testBasicConnectivity(apiEndpoint)
             
             _uiState.value = _uiState.value.copy(

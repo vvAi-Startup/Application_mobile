@@ -14,7 +14,7 @@ import kotlin.coroutines.suspendCoroutine
 class WavRecorder {
     // Definir as constantes em um objeto para fácil acesso e manutenção
     private object AudioConstants {
-        val SAMPLE_RATE = 44100 // Taxa de amostragem (Hz)
+        val SAMPLE_RATE = 16000 // Taxa de amostragem (Hz)
         val NUM_CHANNELS = 1 // Mono
         val BITS_PER_SAMPLE = 16 // 16 bits
         val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
@@ -64,7 +64,7 @@ class WavRecorder {
                     var chunkIndex = 0
                     var accumulatedData = ByteArray(0)
                     var lastChunkTime = System.currentTimeMillis()
-                    val chunkIntervalMs = 5000L // 5 segundos
+                    val chunkIntervalMs = 10000L // 10 segundos
 
                     while (isRecording) {
                         if (isPaused) {
@@ -80,7 +80,7 @@ class WavRecorder {
                              
                              val currentTime = System.currentTimeMillis()
                              
-                             // Envia chunk a cada 5 segundos
+                             // Envia chunk a cada 10 segundos
                              if (currentTime - lastChunkTime >= chunkIntervalMs && accumulatedData.isNotEmpty()) {
                                  println("WavRecorder: Enviando chunk $chunkIndex com ${accumulatedData.size} bytes")
                                  chunkCallback?.invoke(accumulatedData, chunkIndex)
