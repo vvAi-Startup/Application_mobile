@@ -10,5 +10,5 @@ object Config {
     val healthUrl: String get() = "$apiBaseUrl/health"
 
     // WebSocket endpoints
-    val wsStreamUrl: String get() = "$wsBaseUrl/stream"
+    val wsStreamUrl: String get() = "$wsBaseUrl/api/v1/streaming/ws/audio-streaming"
 }

@@ -109,7 +109,7 @@ class MainActivity : ComponentActivity() {
                             }
                         },
                         onStopClicked = {
-                            viewModel.stopRecordingAndProcess(apiEndpoint = "http://10.0.2.2:5000/upload")
+                            viewModel.stopRecordingAndProcess(apiEndpoint = "")
                         },
                         onTestAPIClicked = {
                             viewModel.testAPI()
