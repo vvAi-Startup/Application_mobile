@@ -30,10 +30,12 @@ class AudioService {
     private var processedOutputFile: File? = null
     private var processedDataBytes: Long = 0
 
+    private var jsonWs: com.vvai.calmwave.service.WebSocketService? = null
+    private var currentSessionId: String? = null
+
     fun connectWebSocket(apiWsUrl: String, context: Context, onConnected: (() -> Unit)? = null, onFailure: ((Throwable) -> Unit)? = null) {
         try {
-            val request = Request.Builder().url(apiWsUrl).build()
-            // Prepara arquivo de saída do áudio processado
+            // Prepare output file for processed audio
             val outDir = context.getExternalFilesDir(null)
             processedOutputFile = File(outDir, "processed_${System.currentTimeMillis()}.wav")
             processedOutputStream = FileOutputStream(processedOutputFile!!)
@@ -43,45 +45,95 @@ class AudioService {
             stopAndReleaseAudioTrack()
             setupAudioTrack()
 
-            webSocket = client.newWebSocket(request, object : WebSocketListener() {
-                override fun onOpen(ws: WebSocket, response: okhttp3.Response) {
+            // Build json websocket using OkHttp client already present
+            if (jsonWs == null) jsonWs = com.vvai.calmwave.service.WebSocketService(client)
+
+            val listener = object : com.vvai.calmwave.service.WebSocketService.Listener {
+                override fun onOpen() {
                     isWebSocketConnected = true
+                    // Start a new session like the Python tester
+                    currentSessionId = UUID.randomUUID().toString()
+                    val startMsg = "{" +
+                        "\"type\":\"start_session\"," +
+                        "\"session_id\":\"${currentSessionId}\"" +
+                    "}"
+                    jsonWs?.sendText(startMsg)
                     onConnected?.invoke()
                 }
-                override fun onMessage(ws: WebSocket, bytes: ByteString) {
-                    val processedAudioBytes = bytes.toByteArray()
-                    if (processedAudioBytes.isNotEmpty()) {
-                        // Toca imediatamente
-                        audioTrack?.write(processedAudioBytes, 0, processedAudioBytes.size)
-                        // Salva para arquivo final
-                        processedOutputStream?.write(processedAudioBytes)
-                        processedDataBytes += processedAudioBytes.size
+                override fun onTextMessage(text: String) {
+                    // Expect JSON messages, possibly containing processed_audio_data (base64 of WAV)
+                    try {
+                        val obj = org.json.JSONObject(text)
+                        val type = obj.optString("type")
+                        when (type) {
+                            "audio_processed" -> {
+                                val processed = obj.optString("processed_audio_data", null)
+                                if (!processed.isNullOrEmpty()) {
+                                    val bytes = android.util.Base64.decode(processed, android.util.Base64.DEFAULT)
+                                    val pcm = extractPcm(bytes)
+                                    audioTrack?.write(pcm, 0, pcm.size)
+                                    processedOutputStream?.write(pcm)
+                                    processedDataBytes += pcm.size
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
                     }
                 }
-                override fun onFailure(ws: WebSocket, t: Throwable, response: okhttp3.Response?) {
+                override fun onClosed(code: Int, reason: String) {
+                    isWebSocketConnected = false
+                }
+                override fun onFailure(t: Throwable) {
                     isWebSocketConnected = false
                     onFailure?.invoke(t)
                 }
-                override fun onClosed(ws: WebSocket, code: Int, reason: String) {
-                    isWebSocketConnected = false
-                }
-            })
+            }
+
+            jsonWs?.connect(apiWsUrl, listener)
         } catch (e: Exception) {
             onFailure?.invoke(e)
         }
     }
 
     fun disconnectWebSocket() {
+        // Send stop_session if we have an active session
+        try {
+            currentSessionId?.let { sid ->
+                val stopMsg = org.json.JSONObject().apply {
+                    put("type", "stop_session")
+                    put("session_id", sid)
+                }
+                jsonWs?.sendText(stopMsg.toString())
+            }
+        } catch (_: Exception) {}
         webSocket?.close(1000, "Normal closure")
         webSocket = null
         isWebSocketConnected = false
         webSocketJob?.cancel()
         finalizeProcessedOutput()
+        jsonWs?.close()
+        currentSessionId = null
     }
 
     fun sendAudioChunkViaWebSocket(chunk: ByteArray) {
         if (isWebSocketConnected) {
-            webSocket?.send(ByteString.of(*chunk))
+            // Build a proper WAV for this chunk (16kHz mono 16-bit) and base64 encode
+            val wavHeader = createWavHeaderFor16kMono16bit(chunk.size)
+            val wavBytes = wavHeader + chunk
+            val b64 = android.util.Base64.encodeToString(wavBytes, android.util.Base64.NO_WRAP)
+            val msg = org.json.JSONObject().apply {
+                put("type", "audio_chunk")
+                put("session_id", currentSessionId ?: UUID.randomUUID().toString().also { currentSessionId = it })
+                put("chunk_id", "chunk_${System.currentTimeMillis()}")
+                put("audio_data", b64)
+                put("is_final", false)
+                put("format", "wav")
+                put("sample_rate", 16000)
+                put("channels", 1)
+                put("bits_per_sample", 16)
+            }
+            jsonWs?.sendText(msg.toString())
         }
     }
 
@@ -911,6 +963,56 @@ class AudioService {
             println("Causa: ${e.cause?.message}")
             e.printStackTrace()
             return@withContext false
+        }
+    }
+
+    private fun createWavHeaderFor16kMono16bit(dataSize: Int): ByteArray {
+        val header = ByteArray(44)
+        val buffer = java.nio.ByteBuffer.wrap(header).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        val sampleRate = 16000
+        val numChannels = 1
+        val bitsPerSample = 16
+        val byteRate = sampleRate * numChannels * bitsPerSample / 8
+
+        buffer.putInt(0x46464952)
+        buffer.putInt(36 + dataSize)
+        buffer.putInt(0x45564157)
+        buffer.putInt(0x20746d66)
+        buffer.putInt(16)
+        buffer.putShort(1)
+        buffer.putShort(numChannels.toShort())
+        buffer.putInt(sampleRate)
+        buffer.putInt(byteRate)
+        buffer.putShort((numChannels * bitsPerSample / 8).toShort())
+        buffer.putShort(bitsPerSample.toShort())
+        buffer.putInt(0x61746164)
+        buffer.putInt(dataSize)
+        return header
+    }
+
+    // Extrai PCM de bytes WAV (ou retorna os próprios bytes se já forem PCM)
+    private fun extractPcm(data: ByteArray): ByteArray {
+        return try {
+            if (data.size >= 44 && data[0] == 'R'.code.toByte() && data[1] == 'I'.code.toByte() && data[2] == 'F'.code.toByte() && data[3] == 'F'.code.toByte()) {
+                // Procura chunk 'data'
+                var offset = 12 // após RIFF(4) + size(4) + WAVE(4)
+                while (offset + 8 <= data.size) {
+                    val id = String(data, offset, 4)
+                    val size = java.nio.ByteBuffer.wrap(data, offset + 4, 4).order(java.nio.ByteOrder.LITTLE_ENDIAN).int
+                    if (id == "data") {
+                        val start = offset + 8
+                        val end = (start + size).coerceAtMost(data.size)
+                        return data.copyOfRange(start, end)
+                    }
+                    offset += 8 + size
+                }
+                // Se não achou, tenta remover cabeçalho padrão de 44 bytes
+                if (data.size > 44) data.copyOfRange(44, data.size) else data
+            } else {
+                data
+            }
+        } catch (_: Exception) {
+            data
         }
     }
 }
