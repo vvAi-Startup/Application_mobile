@@ -1,10 +1,8 @@
-package com.vvai.calmwave.service
+package com.vvai.calmwave
 
-// ========================================
-// BACKEND: AUDIO SERVICE
-// ========================================
-// Este arquivo gerencia toda a lógica de áudio da aplicação
-//  MANTER: Core do sistema de áudio, Bluetooth e comunicação com API
+import okhttp3.WebSocket
+import okhttp3.WebSocketListener
+import okio.ByteString
 
 import android.content.Context
 import android.media.AudioFormat
@@ -20,14 +18,155 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.io.IOException
 import java.util.UUID
 
 class AudioService {
-    // ========================================
-    // BACKEND: Constantes e configurações
-    // ========================================
-    //  MANTER: Configurações de áudio e HTTP
+    private var webSocket: WebSocket? = null
+    private var webSocketJob: Job? = null
+    private var isWebSocketConnected = false
+    private var processedOutputStream: FileOutputStream? = null
+    private var processedOutputFile: File? = null
+    private var processedDataBytes: Long = 0
+
+    private var jsonWs: com.vvai.calmwave.service.WebSocketService? = null
+    private var currentSessionId: String? = null
+
+    fun connectWebSocket(apiWsUrl: String, context: Context, onConnected: (() -> Unit)? = null, onFailure: ((Throwable) -> Unit)? = null) {
+        try {
+            // Prepare output file for processed audio
+            val outDir = context.getExternalFilesDir(null)
+            processedOutputFile = File(outDir, "processed_${System.currentTimeMillis()}.wav")
+            processedOutputStream = FileOutputStream(processedOutputFile!!)
+            writeWavHeader(processedOutputStream!!) // cabeçalho temporário
+            processedDataBytes = 0
+
+            stopAndReleaseAudioTrack()
+            setupAudioTrack()
+
+            // Build json websocket using OkHttp client already present
+            if (jsonWs == null) jsonWs = com.vvai.calmwave.service.WebSocketService(client)
+
+            val listener = object : com.vvai.calmwave.service.WebSocketService.Listener {
+                override fun onOpen() {
+                    isWebSocketConnected = true
+                    // Start a new session like the Python tester
+                    currentSessionId = UUID.randomUUID().toString()
+                    val startMsg = "{" +
+                        "\"type\":\"start_session\"," +
+                        "\"session_id\":\"${currentSessionId}\"" +
+                    "}"
+                    jsonWs?.sendText(startMsg)
+                    onConnected?.invoke()
+                }
+                override fun onTextMessage(text: String) {
+                    // Expect JSON messages, possibly containing processed_audio_data (base64 of WAV)
+                    try {
+                        val obj = org.json.JSONObject(text)
+                        val type = obj.optString("type")
+                        when (type) {
+                            "audio_processed" -> {
+                                val processed = obj.optString("processed_audio_data", null)
+                                if (!processed.isNullOrEmpty()) {
+                                    val bytes = android.util.Base64.decode(processed, android.util.Base64.DEFAULT)
+                                    val pcm = extractPcm(bytes)
+                                    audioTrack?.write(pcm, 0, pcm.size)
+                                    processedOutputStream?.write(pcm)
+                                    processedDataBytes += pcm.size
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+                override fun onClosed(code: Int, reason: String) {
+                    isWebSocketConnected = false
+                }
+                override fun onFailure(t: Throwable) {
+                    isWebSocketConnected = false
+                    onFailure?.invoke(t)
+                }
+            }
+
+            jsonWs?.connect(apiWsUrl, listener)
+        } catch (e: Exception) {
+            onFailure?.invoke(e)
+        }
+    }
+
+    fun disconnectWebSocket() {
+        // Send stop_session if we have an active session
+        try {
+            currentSessionId?.let { sid ->
+                val stopMsg = org.json.JSONObject().apply {
+                    put("type", "stop_session")
+                    put("session_id", sid)
+                }
+                jsonWs?.sendText(stopMsg.toString())
+            }
+        } catch (_: Exception) {}
+        webSocket?.close(1000, "Normal closure")
+        webSocket = null
+        isWebSocketConnected = false
+        webSocketJob?.cancel()
+        finalizeProcessedOutput()
+        jsonWs?.close()
+        currentSessionId = null
+    }
+
+    fun sendAudioChunkViaWebSocket(chunk: ByteArray) {
+        if (isWebSocketConnected) {
+            // Build a proper WAV for this chunk (16kHz mono 16-bit) and base64 encode
+            val wavHeader = createWavHeaderFor16kMono16bit(chunk.size)
+            val wavBytes = wavHeader + chunk
+            val b64 = android.util.Base64.encodeToString(wavBytes, android.util.Base64.NO_WRAP)
+            val msg = org.json.JSONObject().apply {
+                put("type", "audio_chunk")
+                put("session_id", currentSessionId ?: UUID.randomUUID().toString().also { currentSessionId = it })
+                put("chunk_id", "chunk_${System.currentTimeMillis()}")
+                put("audio_data", b64)
+                put("is_final", false)
+                put("format", "wav")
+                put("sample_rate", 16000)
+                put("channels", 1)
+                put("bits_per_sample", 16)
+            }
+            jsonWs?.sendText(msg.toString())
+        }
+    }
+
+    fun sendAudioChunksPeriodically(audioFile: File, chunkDurationMs: Long = 10000L) {
+        webSocketJob?.cancel()
+        webSocketJob = CoroutineScope(Dispatchers.IO).launch {
+            stopAndReleaseAudioTrack()
+            setupAudioTrack()
+            FileInputStream(audioFile).use { fis ->
+                val buffer = ByteArray(CHUNK_SIZE)
+                var bytesRead: Int
+                var accumulatedData = ByteArray(0)
+                var lastChunkTime = System.currentTimeMillis()
+                while (fis.read(buffer, 0, CHUNK_SIZE).also { bytesRead = it } != -1 && isWebSocketConnected) {
+                    val chunkData = if (bytesRead < CHUNK_SIZE) buffer.copyOf(bytesRead) else buffer
+                    accumulatedData += chunkData
+                    val currentTime = System.currentTimeMillis()
+                    if (currentTime - lastChunkTime >= chunkDurationMs) {
+                        if (accumulatedData.isNotEmpty()) {
+                            sendAudioChunkViaWebSocket(accumulatedData)
+                            accumulatedData = ByteArray(0)
+                            lastChunkTime = currentTime
+                        }
+                    }
+                    delay(10)
+                }
+                // Envia qualquer dado restante
+                if (accumulatedData.isNotEmpty()) {
+                    sendAudioChunkViaWebSocket(accumulatedData)
+                }
+            }
+        }
+    }
     private val CHUNK_SIZE = 4096
     private val client = OkHttpClient.Builder()
         .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
@@ -35,10 +174,6 @@ class AudioService {
         .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
         .build()
 
-    // ========================================
-    // BACKEND: Variáveis de estado de áudio
-    // ========================================
-    //  MANTER: Controle de estado de reprodução
     private var audioTrack: AudioTrack? = null
     @Volatile private var isPlaying = false
     @Volatile private var isPaused = false
@@ -47,28 +182,18 @@ class AudioService {
     private var totalPlaybackDuration: Long = 0
     private var audioManager: AudioManager? = null
 
-    // ========================================
-    // BACKEND: Constantes de áudio
-    // ========================================
-    //  MANTER: Configurações de qualidade de áudio
-    private val sampleRate = 44100
+    // Constantes de áudio
+    private val sampleRate = 16000
     private val channelConfig = AudioFormat.CHANNEL_OUT_MONO
     private val audioFormat = AudioFormat.ENCODING_PCM_16BIT
 
-    // ========================================
-    // BACKEND: Inicialização
-    // ========================================
-    //  MANTER: Setup inicial do serviço de áudio
+    // Inicialização da classe com o contexto da aplicação
     fun init(context: Context) {
         if (audioManager == null) {
             audioManager = context.applicationContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         }
     }
 
-    // ========================================
-    // BACKEND: Gerenciamento de Bluetooth SCO
-    // ========================================
-    //  MANTER: Controle de conexão Bluetooth para gravação
     fun startBluetoothSco() {
         audioManager?.let { manager ->
             manager.startBluetoothSco()
@@ -83,10 +208,6 @@ class AudioService {
         }
     }
 
-    // ========================================
-    // BACKEND: Configuração do AudioTrack
-    // ========================================
-    //  MANTER: Setup do sistema de reprodução de áudio
     private fun setupAudioTrack() {
         val bufferSize = AudioTrack.getMinBufferSize(sampleRate, channelConfig, audioFormat)
         
@@ -107,10 +228,6 @@ class AudioService {
         audioTrack?.play()
     }
 
-    // ========================================
-    // BACKEND: Limpeza e liberação de recursos
-    // ========================================
-    //  MANTER: Gerenciamento de recursos de áudio
     private fun stopAndReleaseAudioTrack() {
         // Limpa o estado de seek primeiro
         seekInProgress = false
@@ -144,6 +261,57 @@ class AudioService {
         totalPlaybackDuration = 0
     }
 
+    private fun writeWavHeader(out: FileOutputStream) {
+        val header = ByteArray(44)
+        val buffer = java.nio.ByteBuffer.wrap(header).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        val numChannels = 1
+        val bitsPerSample = 16
+        val byteRate = sampleRate * numChannels * bitsPerSample / 8
+
+        buffer.putInt(0x46464952)
+        buffer.putInt(0)
+        buffer.putInt(0x45564157)
+        buffer.putInt(0x20746d66)
+        buffer.putInt(16)
+        buffer.putShort(1)
+        buffer.putShort(numChannels.toShort())
+        buffer.putInt(sampleRate)
+        buffer.putInt(byteRate)
+        buffer.putShort((numChannels * bitsPerSample / 8).toShort())
+        buffer.putShort(bitsPerSample.toShort())
+        buffer.putInt(0x61746164)
+        buffer.putInt(0)
+        out.write(header, 0, 44)
+    }
+
+    private fun finalizeProcessedOutput() {
+        try {
+            processedOutputStream?.flush()
+            processedOutputStream?.close()
+        } catch (_: Exception) {}
+
+        processedOutputStream = null
+        processedOutputFile?.let { file ->
+            try {
+                if (processedDataBytes > 0) {
+                    val raf = java.io.RandomAccessFile(file, "rw")
+                    val dataSize = processedDataBytes.toInt()
+                    val fileSize = 36 + dataSize
+                    raf.seek(4)
+                    raf.writeInt(java.lang.Integer.reverseBytes(fileSize))
+                    raf.seek(40)
+                    raf.writeInt(java.lang.Integer.reverseBytes(dataSize))
+                    raf.close()
+                } else {
+                    // Nada recebido, remove arquivo vazio
+                    file.delete()
+                }
+            } catch (_: Exception) {}
+        }
+        processedOutputFile = null
+        processedDataBytes = 0
+    }
+
     suspend fun sendAndPlayWavFile(filePath: String, apiEndpoint: String) = withContext(Dispatchers.IO) {
         val file = File(filePath)
         if (!file.exists()) {
@@ -155,7 +323,7 @@ class AudioService {
         setupAudioTrack()
         
         val sessionId = UUID.randomUUID().toString()
-        val chunkIntervalMs = 5000L // 5 segundos
+    val chunkIntervalMs = 10000L // 10 segundos
         var lastChunkTime = 0L
 
         try {
@@ -173,7 +341,7 @@ class AudioService {
                     
                     val currentTime = System.currentTimeMillis()
                     
-                    // Envia chunk a cada 5 segundos
+                    // Envia chunk a cada 10 segundos
                     if (currentTime - lastChunkTime >= chunkIntervalMs) {
                         if (accumulatedData.isNotEmpty()) {
                             // Cria um arquivo temporário para enviar como multipart/form-data
@@ -673,7 +841,7 @@ class AudioService {
             println("=== TESTE DE CONECTIVIDADE BÁSICA ===")
             println("Endpoint base: $apiEndpoint")
             
-            // Remove o /upload do endpoint e adiciona /health
+            // Deriva /health a partir do upload informado
             val baseUrl = apiEndpoint.replace("/upload", "/health")
             println("Testando conectividade em: $baseUrl")
             
@@ -698,7 +866,7 @@ class AudioService {
                 println("Corpo da resposta: $responseBody")
                 
                 if (response.isSuccessful) {
-                    println(" SERVIDOR RESPONDEU!")
+                    println("✅ SERVIDOR RESPONDEU!")
                     return@withContext true
                 } else {
                     println("❌ SERVIDOR RESPONDEU COM ERRO - Código: ${response.code}")
@@ -777,7 +945,7 @@ class AudioService {
                     println("Corpo da resposta: $responseBody")
                     
                     if (response.isSuccessful) {
-                        println(" CONEXÃO BEM-SUCEDIDA!")
+                        println("✅ CONEXÃO BEM-SUCEDIDA!")
                         return@withContext true
                     } else {
                         println("❌ FALHA NA CONEXÃO - Código: ${response.code}")
@@ -795,6 +963,56 @@ class AudioService {
             println("Causa: ${e.cause?.message}")
             e.printStackTrace()
             return@withContext false
+        }
+    }
+
+    private fun createWavHeaderFor16kMono16bit(dataSize: Int): ByteArray {
+        val header = ByteArray(44)
+        val buffer = java.nio.ByteBuffer.wrap(header).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        val sampleRate = 16000
+        val numChannels = 1
+        val bitsPerSample = 16
+        val byteRate = sampleRate * numChannels * bitsPerSample / 8
+
+        buffer.putInt(0x46464952)
+        buffer.putInt(36 + dataSize)
+        buffer.putInt(0x45564157)
+        buffer.putInt(0x20746d66)
+        buffer.putInt(16)
+        buffer.putShort(1)
+        buffer.putShort(numChannels.toShort())
+        buffer.putInt(sampleRate)
+        buffer.putInt(byteRate)
+        buffer.putShort((numChannels * bitsPerSample / 8).toShort())
+        buffer.putShort(bitsPerSample.toShort())
+        buffer.putInt(0x61746164)
+        buffer.putInt(dataSize)
+        return header
+    }
+
+    // Extrai PCM de bytes WAV (ou retorna os próprios bytes se já forem PCM)
+    private fun extractPcm(data: ByteArray): ByteArray {
+        return try {
+            if (data.size >= 44 && data[0] == 'R'.code.toByte() && data[1] == 'I'.code.toByte() && data[2] == 'F'.code.toByte() && data[3] == 'F'.code.toByte()) {
+                // Procura chunk 'data'
+                var offset = 12 // após RIFF(4) + size(4) + WAVE(4)
+                while (offset + 8 <= data.size) {
+                    val id = String(data, offset, 4)
+                    val size = java.nio.ByteBuffer.wrap(data, offset + 4, 4).order(java.nio.ByteOrder.LITTLE_ENDIAN).int
+                    if (id == "data") {
+                        val start = offset + 8
+                        val end = (start + size).coerceAtMost(data.size)
+                        return data.copyOfRange(start, end)
+                    }
+                    offset += 8 + size
+                }
+                // Se não achou, tenta remover cabeçalho padrão de 44 bytes
+                if (data.size > 44) data.copyOfRange(44, data.size) else data
+            } else {
+                data
+            }
+        } catch (_: Exception) {
+            data
         }
     }
 }

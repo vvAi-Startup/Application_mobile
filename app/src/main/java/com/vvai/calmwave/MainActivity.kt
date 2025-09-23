@@ -1,12 +1,7 @@
 package com.vvai.calmwave
 
-// ========================================
-// FRONTEND + BACKEND MISTO - MAIN ACTIVITY
-// ========================================
-// Este arquivo contém tanto lógica de UI quanto lógica de negócio
-// RECOMENDAÇÃO: Separar lógica de negócio para controllers
-
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -28,44 +23,25 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import com.vvai.calmwave.controller.MainViewModel
-import com.vvai.calmwave.controller.MainViewModelFactory
-import com.vvai.calmwave.service.AudioService
-import com.vvai.calmwave.service.WavRecorder
-import com.vvai.calmwave.service.WebSocketService
-import com.vvai.calmwave.ui.RenameRecordingDialog
 import com.vvai.calmwave.ui.theme.CalmWaveTheme
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
-import androidx.lifecycle.lifecycleScope
-import com.vvai.calmwave.models.UiState
 
 class MainActivity : ComponentActivity() {
 
-    // ========================================
-    // BACKEND: Inicialização do ViewModel
-    // ========================================
-    //  MANTER: Injeção de dependências
+    // 1. Inicializa o ViewModel usando a ViewModel Factory
     private val viewModel: MainViewModel by viewModels {
-        val audioService = AudioService()
-        val webSocketService = WebSocketService(this, lifecycleScope)
-        val wavRecorder = WavRecorder(webSocketService, lifecycleScope)
-        
         MainViewModelFactory(
-            audioService = audioService,
-            wavRecorder = wavRecorder,
-            webSocketService = webSocketService,
-            context = this
+            audioService = AudioService(),
+            wavRecorder = WavRecorder(),
+            context = applicationContext
         )
     }
 
-    // ========================================
-    // BACKEND: Contrato para solicitar permissões
-    // ========================================
-    // ⚠️ REVISAR: Pode ser movido para um PermissionController
+    // Contrato para solicitar múltiplas permissões
     private val requestPermissionsLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
             val allPermissionsGranted = permissions.entries.all { it.value }
@@ -79,127 +55,87 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // ========================================
-        // BACKEND: Verificação de permissões
-        // ========================================
-        // ⚠️ REVISAR: Pode ser movido para um PermissionController
+        // 2. Verifica e solicita as permissões no início
         checkAndRequestPermissions()
 
-        // ========================================
-        // FRONTEND: Configuração da UI
-        // ========================================
-        //  MANTER: Configuração da interface
         enableEdgeToEdge()
         setContent {
             CalmWaveTheme {
-                // ========================================
-                // BACKEND: Coleta do estado da UI do ViewModel
-                // ========================================
-                //  MANTER: Comunicação com ViewModel
-                val uiState by viewModel.uiState.collectAsState()
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Button(onClick = {
+                        startActivity(Intent(this@MainActivity, GravarActivity::class.java))
+                    }) {
+                        Text("Ir para Gravar")
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(onClick = {
+                        startActivity(Intent(this@MainActivity, PlaylistActivity::class.java))
+                    }) {
+                        Text("Ir para Playlist")
+                    }
 
-                // ========================================
-                // BACKEND: Carrega a lista de arquivos ao iniciar
-                // ========================================
-                // ⚠️ REVISAR: Pode ser movido para um FileController
-                val context = LocalContext.current
-                LaunchedEffect(Unit) {
-                    val listFilesProvider: () -> List<File> = { listRecordedWavFiles() }
-                    viewModel.loadWavFiles(listFilesProvider)
-                }
+                    // 3. Coleta o estado da UI do ViewModel e passa para o Composable
+                    val uiState by viewModel.uiState.collectAsState()
 
-                // ========================================
-                // FRONTEND: Interface principal do usuário
-                // ========================================
-                //  MANTER: UI principal
-                AudioPlayerScreen(
-                    uiState = uiState,
-                    onRecordClicked = {
-                        // ========================================
-                        // BACKEND: Lógica de gravação
-                        // ========================================
-                        // ⚠️ REVISAR: Pode ser movido para um RecordingController
-                        val downloadsDir = getDownloadsDirectory()
-                        val fileName = generateFileName()
-                        val filePath = if (downloadsDir?.exists() == true) {
-                            "${downloadsDir.absolutePath}/$fileName"
-                        } else {
-                            val cacheDir = externalCacheDir
-                            cacheDir?.mkdirs()
-                            "${cacheDir?.absolutePath}/$fileName"
-                        }
-                        if (filePath != "null/null") {
-                            viewModel.startRecording(filePath)
-                        } else {
-                            Toast.makeText(context, "Erro: Não foi possível obter o diretório de gravação.", Toast.LENGTH_LONG).show()
-                        }
-                    },
-                    onStopClicked = {
-                        // ========================================
-                        // BACKEND: Parar gravação e mostrar diálogo de renomeação
-                        // ========================================
-                        //  MANTER: Comunicação com ViewModel para parar gravação
-                        viewModel.stopRecording()
-                    },
-                    onTestAPIClicked = {
-                        // ========================================
-                        // BACKEND: Teste de API
-                        // ========================================
-                        //  MANTER: Comunicação com ViewModel
-                        viewModel.testAPI()
-                    },
-                    onTestBasicConnectivity = {
-                        // ========================================
-                        // BACKEND: Teste de conectividade
-                        // ========================================
-                        //  MANTER: Comunicação com ViewModel
-                        viewModel.testBasicConnectivity()
-                    },
-                    onPlayClicked = { filePath ->
-                        viewModel.playAudioFile(filePath)
-                    },
-                    onPauseClicked = {
-                        viewModel.pausePlayback()
-                    },
-                    onResumeClicked = {
-                        viewModel.resumePlayback()
-                    },
-                    onStopPlaybackClicked = {
-                        viewModel.stopPlayback()
-                    },
-                    onSeek = { position ->
-                        viewModel.seekTo(position)
-                    },
-                    onRefreshFiles = {
+                    // 4. Carrega a lista de arquivos ao iniciar a tela
+                    // O LaunchedEffect executa a lógica apenas uma vez
+                    val context = LocalContext.current
+                    LaunchedEffect(Unit) {
                         val listFilesProvider: () -> List<File> = { listRecordedWavFiles() }
                         viewModel.loadWavFiles(listFilesProvider)
-                    },
-                    onFileClicked = { filePath ->
-                        viewModel.playAudioFile(filePath)
                     }
-                )
-                
-                // ========================================
-                // FRONTEND: Diálogo de renomeação
-                // ========================================
-                //  MANTER: Diálogo para renomear gravações antes de salvar
-                if (uiState.showRenameDialog && uiState.tempRecording != null) {
-                    RenameRecordingDialog(
-                        tempRecording = uiState.tempRecording!!,
-                        currentText = uiState.renameDialogText,
-                        isSaving = uiState.isSaving,
-                        onTextChange = { text ->
-                            viewModel.updateRenameText(text)
+
+                    AudioPlayerScreen(
+                        uiState = uiState,
+                        onRecordClicked = {
+                            val downloadsDir = getDownloadsDirectory()
+                            val fileName = generateFileName()
+                            val filePath = if (downloadsDir?.exists() == true) {
+                                "${downloadsDir.absolutePath}/$fileName"
+                            } else {
+                                val cacheDir = externalCacheDir
+                                cacheDir?.mkdirs()
+                                "${cacheDir?.absolutePath}/$fileName"
+                            }
+                            if (filePath != "null/null") {
+                                viewModel.startRecording(filePath)
+                            } else {
+                                Toast.makeText(context, "Erro: Não foi possível obter o diretório de gravação.", Toast.LENGTH_LONG).show()
+                            }
                         },
-                        onConfirm = {
-                            viewModel.confirmRecordingName()
+                        onStopClicked = {
+                            viewModel.stopRecordingAndProcess(apiEndpoint = "")
                         },
-                        onCancel = {
-                            viewModel.cancelRecording()
+                        onTestAPIClicked = {
+                            viewModel.testAPI()
                         },
-                        onDismiss = {
-                            // Não permite fechar o diálogo clicando fora
-                            // O usuário deve confirmar ou cancelar
+                        onTestBasicConnectivity = {
+                            viewModel.testBasicConnectivity()
+                        },
+                        onFileClicked = { filePath ->
+                            viewModel.playAudioFile(filePath)
+                        },
+                        onPauseResumeClicked = {
+                            if (uiState.isPlaying) {
+                                viewModel.pausePlayback()
+                            } else {
+                                viewModel.resumePlayback()
+                            }
+                        },
+                        onStopPlaybackClicked = {
+                            viewModel.stopPlayback()
+                        },
+                        onSeek = { timeMs ->
+                            viewModel.seekTo(timeMs)
+                        },
+                        onRefreshFiles = {
+                            val listFilesProvider: () -> List<File> = { listRecordedWavFiles() }
+                            viewModel.loadWavFiles(listFilesProvider)
                         }
                     )
                 }
@@ -274,18 +210,16 @@ private fun formatTime(milliseconds: Long): String {
 // 5. O Composable agora recebe o estado da UI e callbacks de evento
 @Composable
 fun AudioPlayerScreen(
-    uiState: UiState,
+    uiState: MainViewModel.UiState,
     onRecordClicked: () -> Unit,
     onStopClicked: () -> Unit,
     onTestAPIClicked: () -> Unit,
     onTestBasicConnectivity: () -> Unit,
-    onPlayClicked: (String) -> Unit,
-    onPauseClicked: () -> Unit,
-    onResumeClicked: () -> Unit,
+    onFileClicked: (String) -> Unit,
+    onPauseResumeClicked: () -> Unit,
     onStopPlaybackClicked: () -> Unit,
     onSeek: (Long) -> Unit,
-    onRefreshFiles: () -> Unit,
-    onFileClicked: (String) -> Unit
+    onRefreshFiles: () -> Unit
 ) {
     var isSeeking by remember { mutableStateOf(false) }
 
@@ -419,7 +353,7 @@ fun AudioPlayerScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceEvenly
                     ) {
-                        Button(onClick = onPauseClicked) {
+                        Button(onClick = onPauseResumeClicked) {
                             Text(text = if (uiState.isPlaying) "Pausar" else "Continuar")
                         }
                         Button(onClick = onStopPlaybackClicked) {

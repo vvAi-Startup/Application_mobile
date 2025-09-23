@@ -17,6 +17,14 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // BuildConfig fields from environment variables
+        val apiBaseUrl = System.getenv("API_BASE_URL") ?: "http://10.67.57.104:5000"
+        val wsBaseUrl = System.getenv("WS_BASE_URL") ?: "ws://10.67.57.104:5000"
+        val dbBaseUrl = System.getenv("DB_BASE_URL") ?: "http://10.67.57.104:5000"
+        buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
+        buildConfigField("String", "WS_BASE_URL", "\"$wsBaseUrl\"")
+        buildConfigField("String", "DB_BASE_URL", "\"$dbBaseUrl\"")
     }
 
     buildTypes {
@@ -40,6 +48,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.8"
@@ -61,6 +70,11 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+    // Material icons (extended) - provides Icons.Filled.Pause / PlayArrow
+    implementation("androidx.compose.material:material-icons-extended")
+    // ExoPlayer Media3 (versão mais recente recomendada)
+    implementation("androidx.media3:media3-exoplayer:1.8.0")
+    implementation("androidx.media3:media3-ui:1.8.0")
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
