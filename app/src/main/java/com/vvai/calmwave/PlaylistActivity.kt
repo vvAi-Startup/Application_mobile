@@ -134,7 +134,8 @@ class PlaylistActivity : ComponentActivity() {
             val wavFiles = remember {
                 val dir = context.getExternalFilesDir(null)
                 dir?.listFiles { f -> f.isFile && f.name.endsWith(".wav", ignoreCase = true) }
-                    ?.toList() ?: emptyList()
+                    ?.sortedByDescending { it.lastModified() } // Ordena por data de modificação (mais recente primeiro)
+                    ?: emptyList()
             }
 
             // --- UI ---
