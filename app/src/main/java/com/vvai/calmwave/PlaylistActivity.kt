@@ -79,6 +79,9 @@ class PlaylistActivity : ComponentActivity() {
             var playlistFilter by remember { mutableStateOf<String?>(null) }
             val activeColor = Color(0xFF2DC9C6)
             val audioDurationCache = remember { mutableStateMapOf<String, Long>() }
+            
+            // Global state for DropdownMenu control - using file path as key
+            var menuOpenedForFilePath by remember { mutableStateOf<String?>(null) }
 
             // --- Persistence ---
             fun savePlaylists() {
@@ -206,8 +209,12 @@ class PlaylistActivity : ComponentActivity() {
                                         .padding(horizontal = 16.dp)
                                         .weight(1f)
                                 ) {
-                                    items(filteredWavFiles) { file: File ->
-                                        var showMenu by remember { mutableStateOf(false) }
+                                    items(
+                                        items = filteredWavFiles,
+                                        key = { it.absolutePath }
+                                    ) { file: File ->
+                                        // Remove local state and use global state based on file path
+                                        val isMenuOpen = menuOpenedForFilePath == file.absolutePath
                                         val durationMs =
                                             audioDurationCache.getOrPut(file.absolutePath) {
                                                 val player = ExoPlayerAudioPlayer(this@PlaylistActivity)
@@ -257,28 +264,36 @@ class PlaylistActivity : ComponentActivity() {
                                                 style = MaterialTheme.typography.bodySmall
                                             )
                                             Spacer(modifier = Modifier.width(8.dp))
-                                            IconButton(onClick = { showMenu = true }) {
+                                            IconButton(onClick = { 
+                                                menuOpenedForFilePath = if (isMenuOpen) null else file.absolutePath
+                                                println("DEBUG: Menu button clicked for ${file.name}, isMenuOpen: $isMenuOpen -> ${!isMenuOpen}")
+                                            }) {
                                                 Icon(
                                                     imageVector = Icons.Filled.MoreVert,
                                                     contentDescription = "Opções"
                                                 )
                                             }
                                             DropdownMenu(
-                                                expanded = showMenu,
-                                                onDismissRequest = { showMenu = false }
+                                                expanded = isMenuOpen,
+                                                onDismissRequest = { 
+                                                    menuOpenedForFilePath = null
+                                                    println("DEBUG: Menu dismissed for ${file.name}")
+                                                }
                                             ) {
                                                 DropdownMenuItem(
                                                     text = { Text("Excluir") },
                                                     onClick = {
-                                                        showMenu = false
+                                                        menuOpenedForFilePath = null
+                                                        println("DEBUG: Excluir clicked for ${file.name}")
                                                         // TODO: Add audio delete logic
                                                     }
                                                 )
                                                 DropdownMenuItem(
                                                     text = { Text("Mover para playlist") },
                                                     onClick = {
-                                                        showMenu = false
+                                                        menuOpenedForFilePath = null
                                                         showPlaylistDialogForAudio = file
+                                                        println("DEBUG: Mover para playlist clicked for ${file.name}")
                                                     }
                                                 )
                                             }
