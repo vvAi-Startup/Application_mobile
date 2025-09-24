@@ -37,6 +37,7 @@ import com.vvai.calmwave.ui.components.PlaylistComponents.PlaylistCard
 import com.vvai.calmwave.ui.components.PlaylistComponents.PlaylistTabs
 import com.vvai.calmwave.ui.components.PlaylistComponents.PlaylistSelectionDialog
 import com.vvai.calmwave.ui.components.PlaylistComponents.FilterSheet
+import com.vvai.calmwave.ui.theme.CalmWaveTheme
 import java.io.File
 import com.vvai.calmwave.R
 
@@ -48,7 +49,8 @@ class PlaylistActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         exoPlayerAudioPlayer = ExoPlayerAudioPlayer(this)
         setContent {
-            val context = LocalContext.current
+            CalmWaveTheme {
+                val context = LocalContext.current
             // --- State ---
             var showModal by remember { mutableStateOf(false) }
             var selectedAudioFile by remember { mutableStateOf<File?>(null) }
@@ -834,6 +836,7 @@ class PlaylistActivity : ComponentActivity() {
                     )
                 }
             }
+            } // Fechamento do CalmWaveTheme
         }
 
         fun onDestroy() {
