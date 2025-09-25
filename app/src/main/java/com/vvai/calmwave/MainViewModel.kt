@@ -39,6 +39,11 @@ class MainViewModel(
 
     // Variável para armazenar o caminho do arquivo de gravação atual
     private var currentRecordingPath: String? = null
+    private var onProcessedAudioSaved: ((File) -> Unit)? = null
+
+    fun setProcessedAudioSaveCallback(callback: (File) -> Unit) {
+        onProcessedAudioSaved = callback
+    }
 
     // Bloco de inicialização para o ViewModel
     init {
@@ -123,9 +128,20 @@ class MainViewModel(
 
                 val audioFile = currentRecordingPath?.let { File(it) }
                 if (audioFile?.exists() == true) {
-                    _uiState.value = _uiState.value.copy(
-                        statusText = "Áudio salvo com sucesso!"
-                    )
+                    // Verifica se há um arquivo processado para salvar
+                    val processedFilePath = saveProcessedAudio()
+                    if (processedFilePath != null) {
+                        val processedFile = File(processedFilePath)
+                        // Chama o callback para salvar automaticamente no Downloads
+                        onProcessedAudioSaved?.invoke(processedFile)
+                        _uiState.value = _uiState.value.copy(
+                            statusText = "Áudio gravado e processado salvos com sucesso!"
+                        )
+                    } else {
+                        _uiState.value = _uiState.value.copy(
+                            statusText = "Áudio gravado salvo. Áudio processado não disponível."
+                        )
+                    }
                 } else {
                     _uiState.value = _uiState.value.copy(
                         statusText = "Erro: Arquivo não encontrado para processamento."
@@ -141,7 +157,20 @@ class MainViewModel(
                     isProcessing = false
                 )
                 // Recarrega a lista de arquivos após o processamento
-                loadWavFiles { emptyList() } // Será atualizado pelo MainActivity
+                // A MainActivity irá recarregar automaticamente via seu callback
+            }
+        }
+    }
+
+    fun saveProcessedAudio(): String? {
+        return audioService.getLatestProcessedFile()?.let { processedFile ->
+            // Só tenta salvar se o arquivo processado existe e tem conteúdo
+            if (processedFile.exists() && processedFile.length() > 44) { // 44 bytes = cabeçalho WAV mínimo
+                // Esta função será chamada pela MainActivity para salvar no Downloads
+                onProcessedAudioSaved?.invoke(processedFile) // Chama o callback com o arquivo processado
+                return processedFile.absolutePath
+            } else {
+                null
             }
         }
     }

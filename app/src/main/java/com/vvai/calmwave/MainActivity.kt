@@ -58,6 +58,16 @@ class MainActivity : ComponentActivity() {
         // 2. Verifica e solicita as permissões no início
         checkAndRequestPermissions()
 
+        // 3. Configura callback para salvar automaticamente áudio processado
+        viewModel.setProcessedAudioSaveCallback { processedFile ->
+            val savedFile = saveProcessedAudioToDownloads(processedFile)
+            if (savedFile != null) {
+                runOnUiThread {
+                    Toast.makeText(this, "Áudio processado salvo: ${savedFile.name}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+
         enableEdgeToEdge()
         setContent {
             CalmWaveTheme {
@@ -82,11 +92,11 @@ class MainActivity : ComponentActivity() {
                     // 3. Coleta o estado da UI do ViewModel e passa para o Composable
                     val uiState by viewModel.uiState.collectAsState()
 
-                    // 4. Carrega a lista de arquivos ao iniciar a tela
+                    // 4. Carrega a lista de arquivos (originais e processados) ao iniciar a tela
                     // O LaunchedEffect executa a lógica apenas uma vez
                     val context = LocalContext.current
                     LaunchedEffect(Unit) {
-                        val listFilesProvider: () -> List<File> = { listRecordedWavFiles() }
+                        val listFilesProvider: () -> List<File> = { listAllWavFiles() }
                         viewModel.loadWavFiles(listFilesProvider)
                     }
 
@@ -134,8 +144,24 @@ class MainActivity : ComponentActivity() {
                             viewModel.seekTo(timeMs)
                         },
                         onRefreshFiles = {
-                            val listFilesProvider: () -> List<File> = { listRecordedWavFiles() }
+                            val listFilesProvider: () -> List<File> = { listAllWavFiles() }
                             viewModel.loadWavFiles(listFilesProvider)
+                        },
+                        onSaveProcessedAudio = {
+                            viewModel.saveProcessedAudio()?.let { processedFilePath ->
+                                val processedFile = File(processedFilePath)
+                                if (processedFile.exists()) {
+                                    val savedFile = saveProcessedAudioToDownloads(processedFile)
+                                    if (savedFile != null) {
+                                        Toast.makeText(context, "Áudio processado salvo em Downloads: ${savedFile.name}", Toast.LENGTH_LONG).show()
+                                        // Recarrega a lista para mostrar o novo arquivo
+                                        val listFilesProvider: () -> List<File> = { listAllWavFiles() }
+                                        viewModel.loadWavFiles(listFilesProvider)
+                                    } else {
+                                        Toast.makeText(context, "Erro ao salvar áudio processado", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            } ?: Toast.makeText(context, "Nenhum áudio processado disponível", Toast.LENGTH_SHORT).show()
                         }
                     )
                 }
@@ -197,6 +223,39 @@ class MainActivity : ComponentActivity() {
         val files = dir?.listFiles { f -> f.isFile && f.name.endsWith(".wav", ignoreCase = true) }?.toList() ?: emptyList()
         return files.sortedByDescending { it.lastModified() }
     }
+
+    private fun listProcessedWavFiles(): List<File> {
+        val dir = getExternalFilesDir(null)
+        val files = dir?.listFiles { f -> f.isFile && f.name.startsWith("processed_") && f.name.endsWith(".wav", ignoreCase = true) }?.toList() ?: emptyList()
+        return files.sortedByDescending { it.lastModified() }
+    }
+
+    private fun saveProcessedAudioToDownloads(processedFile: File): File? {
+        return try {
+            val downloadsDir = getDownloadsDirectory()
+            if (downloadsDir?.exists() != true) {
+                downloadsDir?.mkdirs()
+            }
+            
+            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+            val newFileName = "calmwave_processed_$timestamp.wav"
+            val destinationFile = File(downloadsDir, newFileName)
+            
+            processedFile.copyTo(destinationFile, overwrite = true)
+            destinationFile
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    private fun listAllWavFiles(): List<File> {
+        val recordedFiles = listRecordedWavFiles()
+        val processedFiles = listProcessedWavFiles()
+        
+        // Combina as duas listas e ordena por data de modificação
+        return (recordedFiles + processedFiles).sortedByDescending { it.lastModified() }
+    }
 }
 
 // Funções utilitárias para o Composable
@@ -219,7 +278,8 @@ fun AudioPlayerScreen(
     onPauseResumeClicked: () -> Unit,
     onStopPlaybackClicked: () -> Unit,
     onSeek: (Long) -> Unit,
-    onRefreshFiles: () -> Unit
+    onRefreshFiles: () -> Unit,
+    onSaveProcessedAudio: () -> Unit
 ) {
     var isSeeking by remember { mutableStateOf(false) }
 
@@ -373,9 +433,17 @@ fun AudioPlayerScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(text = "Gravações (WAV)")
-                Button(onClick = onRefreshFiles) {
-                    Text(text = "Recarregar")
+                Text(text = "Áudios (Originais e Processados)")
+                Row {
+                    Button(
+                        onClick = onSaveProcessedAudio,
+                        modifier = Modifier.padding(end = 8.dp)
+                    ) {
+                        Text(text = "Salvar Processado")
+                    }
+                    Button(onClick = onRefreshFiles) {
+                        Text(text = "Recarregar")
+                    }
                 }
             }
 
@@ -393,9 +461,16 @@ fun AudioPlayerScreen(
                             .clickable { onFileClicked(file.absolutePath) }
                             .padding(vertical = 8.dp)
                     ) {
-                        Text(text = file.name, style = MaterialTheme.typography.bodyMedium)
+                        val isProcessed = file.name.startsWith("processed_") || file.name.contains("_processed_")
+                        val typeIcon = if (isProcessed) "🎵 " else "🎤 "
+                        val typeText = if (isProcessed) "(Processado)" else "(Original)"
+                        
                         Text(
-                            text = "Tamanho: ${(file.length() / 1024)} KB • Data: ${SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date(file.lastModified()))}",
+                            text = "$typeIcon${file.name}",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Text(
+                            text = "Tipo: $typeText • Tamanho: ${(file.length() / 1024)} KB • Data: ${SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date(file.lastModified()))}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
