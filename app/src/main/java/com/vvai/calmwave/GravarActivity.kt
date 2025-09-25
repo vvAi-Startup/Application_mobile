@@ -249,8 +249,6 @@ class GravarActivity : ComponentActivity() {
                             selected = "Gravação",
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(Color(0xFF222222))
-                                .padding(vertical = 12.dp)
                                 .align(Alignment.BottomCenter)
                         )
                     }

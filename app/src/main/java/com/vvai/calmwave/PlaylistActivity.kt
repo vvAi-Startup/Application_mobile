@@ -828,8 +828,6 @@ class PlaylistActivity : ComponentActivity() {
                         selected = if (selectedTab == "Playlists" || selectedTab == "Áudios") "Playlists" else selectedTab,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(Color(0xFF222222))
-                            .padding(vertical = 12.dp)
                             .align(Alignment.End)
                     )
                 }
