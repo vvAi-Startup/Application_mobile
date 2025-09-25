@@ -12,6 +12,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.Image
 import com.vvai.calmwave.R
+import com.vvai.calmwave.ui.theme.titleTitle
 
 @Composable
 fun TopBar(title: String, modifier: Modifier = Modifier) {
@@ -31,7 +32,7 @@ fun TopBar(title: String, modifier: Modifier = Modifier) {
         ) {
             Text(
                 text = title,
-                style = androidx.compose.material3.MaterialTheme.typography.headlineMedium,
+                style = androidx.compose.material3.MaterialTheme.typography.titleTitle,
                 fontWeight = FontWeight.Bold,
                 color = Color(0xFF174A5A)
             )
