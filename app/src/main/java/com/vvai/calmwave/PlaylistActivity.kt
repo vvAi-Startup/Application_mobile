@@ -168,33 +168,47 @@ class PlaylistActivity : ComponentActivity() {
                                     onTabSelected = { selectedTab = it }
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
-                                OutlinedTextField(
-                                    value = searchText,
-                                    onValueChange = { searchText = it },
-                                    placeholder = { Text("Buscar") },
+                                // Compact search field rewritten to match tab button height exactly (40.dp)
+                                Box(
                                     modifier = Modifier
                                         .weight(1f)
-                                        .defaultMinSize(minHeight = 56.dp), // aumenta mínimo para evitar clipping do texto
-                                    shape = MaterialTheme.shapes.small,
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        unfocusedBorderColor = activeColor,
-                                        focusedBorderColor = activeColor,
-                                        cursorColor = activeColor,
-                                        unfocusedContainerColor = Color.White,
-                                        focusedContainerColor = Color.White
-                                    ),
-                                    singleLine = true,
-                                    trailingIcon = {
-                                        IconButton(onClick = { showFilterMenu = true }) {
+                                        .height(40.dp)
+                                        .background(Color.White, shape = MaterialTheme.shapes.small)
+                                        .border(1.dp, color = Color(0xFFBEEAF0), shape = MaterialTheme.shapes.small),
+                                    contentAlignment = Alignment.CenterStart
+                                ) {
+                                    Row(modifier = Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                                        // Text area
+                                        Box(modifier = Modifier.weight(1f).padding(start = 12.dp, end = 4.dp)) {
+                                            androidx.compose.foundation.text.BasicTextField(
+                                                value = searchText,
+                                                onValueChange = { searchText = it },
+                                                singleLine = true,
+                                                textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, color = Color.Black),
+                                                cursorBrush = androidx.compose.ui.graphics.SolidColor(activeColor),
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                            if (searchText.isBlank()) {
+                                                Text(text = "Buscar", color = Color(0xFF9E9E9E), fontSize = 12.sp)
+                                            }
+                                        }
+
+                                        // Trailing filter icon - compact touch target
+                                        Box(
+                                            modifier = Modifier
+                                                .size(36.dp)
+                                                .clickable { showFilterMenu = true },
+                                            contentAlignment = Alignment.Center
+                                        ) {
                                             Icon(
                                                 imageVector = Icons.Filled.FilterList,
                                                 contentDescription = "Filtrar",
-                                                tint = activeColor
+                                                tint = activeColor,
+                                                modifier = Modifier.size(18.dp)
                                             )
                                         }
-                                    },
-                                    textStyle = LocalTextStyle.current.copy(fontSize = MaterialTheme.typography.bodyMedium.fontSize)
-                                )
+                                    }
+                                }
                             }
                             Spacer(modifier = Modifier.height(20.dp))
                             // Content by Tab
