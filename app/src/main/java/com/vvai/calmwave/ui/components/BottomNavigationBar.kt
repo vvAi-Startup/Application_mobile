@@ -5,6 +5,7 @@ import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.material3.Text
 import androidx.compose.material3.Icon
 import androidx.compose.material.icons.Icons
@@ -28,6 +29,7 @@ fun BottomNavigationBar(selected: String, modifier: Modifier = Modifier) {
         Row(
             modifier = modifier
                 .fillMaxWidth()
+                .navigationBarsPadding()
                 .height(barHeight)
                 .background(Color(0xFF222222)),
             horizontalArrangement = Arrangement.SpaceEvenly,
