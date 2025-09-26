@@ -39,6 +39,7 @@ import com.vvai.calmwave.ui.components.PlaylistComponents.PlaylistSelectionDialo
 import com.vvai.calmwave.ui.components.PlaylistComponents.FilterSheet
 import java.io.File
 import com.vvai.calmwave.R
+import com.vvai.calmwave.ui.theme.CalmWaveTheme
 
 class PlaylistActivity : ComponentActivity() {
     private lateinit var exoPlayerAudioPlayer: ExoPlayerAudioPlayer
@@ -48,8 +49,9 @@ class PlaylistActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         exoPlayerAudioPlayer = ExoPlayerAudioPlayer(this)
         setContent {
-            val context = LocalContext.current
-            // --- State ---
+            CalmWaveTheme {
+                val context = LocalContext.current
+                // --- State ---
             var showModal by remember { mutableStateOf(false) }
             var selectedAudioFile by remember { mutableStateOf<File?>(null) }
             var selectedTab by remember { mutableStateOf("Playlists") }
@@ -79,6 +81,9 @@ class PlaylistActivity : ComponentActivity() {
             var playlistFilter by remember { mutableStateOf<String?>(null) }
             val activeColor = Color(0xFF2DC9C6)
             val audioDurationCache = remember { mutableStateMapOf<String, Long>() }
+            
+            // Global state for DropdownMenu control - using file path as key
+            var menuOpenedForFilePath by remember { mutableStateOf<String?>(null) }
 
             // --- Persistence ---
             fun savePlaylists() {
@@ -131,7 +136,8 @@ class PlaylistActivity : ComponentActivity() {
             val wavFiles = remember {
                 val dir = context.getExternalFilesDir(null)
                 dir?.listFiles { f -> f.isFile && f.name.endsWith(".wav", ignoreCase = true) }
-                    ?.toList() ?: emptyList()
+                    ?.sortedByDescending { it.lastModified() } // Ordena por data de modificação (mais recente primeiro)
+                    ?: emptyList()
             }
 
             // --- UI ---
@@ -164,33 +170,47 @@ class PlaylistActivity : ComponentActivity() {
                                     onTabSelected = { selectedTab = it }
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
-                                OutlinedTextField(
-                                    value = searchText,
-                                    onValueChange = { searchText = it },
-                                    placeholder = { Text("Buscar") },
+                                // Compact search field rewritten to match tab button height exactly (40.dp)
+                                Box(
                                     modifier = Modifier
                                         .weight(1f)
-                                        .defaultMinSize(minHeight = 56.dp), // aumenta mínimo para evitar clipping do texto
-                                    shape = MaterialTheme.shapes.small,
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        unfocusedBorderColor = activeColor,
-                                        focusedBorderColor = activeColor,
-                                        cursorColor = activeColor,
-                                        unfocusedContainerColor = Color.White,
-                                        focusedContainerColor = Color.White
-                                    ),
-                                    singleLine = true,
-                                    trailingIcon = {
-                                        IconButton(onClick = { showFilterMenu = true }) {
+                                        .height(40.dp)
+                                        .background(Color.White, shape = MaterialTheme.shapes.small)
+                                        .border(1.dp, color = Color(0xFFBEEAF0), shape = MaterialTheme.shapes.small),
+                                    contentAlignment = Alignment.CenterStart
+                                ) {
+                                    Row(modifier = Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                                        // Text area
+                                        Box(modifier = Modifier.weight(1f).padding(start = 12.dp, end = 4.dp)) {
+                                            androidx.compose.foundation.text.BasicTextField(
+                                                value = searchText,
+                                                onValueChange = { searchText = it },
+                                                singleLine = true,
+                                                textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, color = Color.Black),
+                                                cursorBrush = androidx.compose.ui.graphics.SolidColor(activeColor),
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                            if (searchText.isBlank()) {
+                                                Text(text = "Buscar", color = Color(0xFF9E9E9E), fontSize = 12.sp)
+                                            }
+                                        }
+
+                                        // Trailing filter icon - compact touch target
+                                        Box(
+                                            modifier = Modifier
+                                                .size(36.dp)
+                                                .clickable { showFilterMenu = true },
+                                            contentAlignment = Alignment.Center
+                                        ) {
                                             Icon(
                                                 imageVector = Icons.Filled.FilterList,
                                                 contentDescription = "Filtrar",
-                                                tint = activeColor
+                                                tint = activeColor,
+                                                modifier = Modifier.size(18.dp)
                                             )
                                         }
-                                    },
-                                    textStyle = LocalTextStyle.current.copy(fontSize = MaterialTheme.typography.bodyMedium.fontSize)
-                                )
+                                    }
+                                }
                             }
                             Spacer(modifier = Modifier.height(20.dp))
                             // Content by Tab
@@ -206,8 +226,12 @@ class PlaylistActivity : ComponentActivity() {
                                         .padding(horizontal = 16.dp)
                                         .weight(1f)
                                 ) {
-                                    items(filteredWavFiles) { file: File ->
-                                        var showMenu by remember { mutableStateOf(false) }
+                                    items(
+                                        items = filteredWavFiles,
+                                        key = { it.absolutePath }
+                                    ) { file: File ->
+                                        // Remove local state and use global state based on file path
+                                        val isMenuOpen = menuOpenedForFilePath == file.absolutePath
                                         val durationMs =
                                             audioDurationCache.getOrPut(file.absolutePath) {
                                                 val player = ExoPlayerAudioPlayer(this@PlaylistActivity)
@@ -257,28 +281,36 @@ class PlaylistActivity : ComponentActivity() {
                                                 style = MaterialTheme.typography.bodySmall
                                             )
                                             Spacer(modifier = Modifier.width(8.dp))
-                                            IconButton(onClick = { showMenu = true }) {
+                                            IconButton(onClick = { 
+                                                menuOpenedForFilePath = if (isMenuOpen) null else file.absolutePath
+                                                println("DEBUG: Menu button clicked for ${file.name}, isMenuOpen: $isMenuOpen -> ${!isMenuOpen}")
+                                            }) {
                                                 Icon(
                                                     imageVector = Icons.Filled.MoreVert,
                                                     contentDescription = "Opções"
                                                 )
                                             }
                                             DropdownMenu(
-                                                expanded = showMenu,
-                                                onDismissRequest = { showMenu = false }
+                                                expanded = isMenuOpen,
+                                                onDismissRequest = { 
+                                                    menuOpenedForFilePath = null
+                                                    println("DEBUG: Menu dismissed for ${file.name}")
+                                                }
                                             ) {
                                                 DropdownMenuItem(
                                                     text = { Text("Excluir") },
                                                     onClick = {
-                                                        showMenu = false
+                                                        menuOpenedForFilePath = null
+                                                        println("DEBUG: Excluir clicked for ${file.name}")
                                                         // TODO: Add audio delete logic
                                                     }
                                                 )
                                                 DropdownMenuItem(
                                                     text = { Text("Mover para playlist") },
                                                     onClick = {
-                                                        showMenu = false
+                                                        menuOpenedForFilePath = null
                                                         showPlaylistDialogForAudio = file
+                                                        println("DEBUG: Mover para playlist clicked for ${file.name}")
                                                     }
                                                 )
                                             }
@@ -812,10 +844,9 @@ class PlaylistActivity : ComponentActivity() {
                         selected = if (selectedTab == "Playlists" || selectedTab == "Áudios") "Playlists" else selectedTab,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(Color(0xFF222222))
-                            .padding(vertical = 12.dp)
                             .align(Alignment.End)
                     )
+                }
                 }
             }
         }

@@ -3,6 +3,7 @@ package com.vvai.calmwave
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import okio.ByteString
+import org.json.JSONObject
 
 import android.content.Context
 import android.media.AudioFormat
@@ -63,7 +64,7 @@ class AudioService {
                 override fun onTextMessage(text: String) {
                     // Expect JSON messages, possibly containing processed_audio_data (base64 of WAV)
                     try {
-                        val obj = org.json.JSONObject(text)
+                        val obj = JSONObject(text)
                         val type = obj.optString("type")
                         when (type) {
                             "audio_processed" -> {
@@ -100,7 +101,7 @@ class AudioService {
         // Send stop_session if we have an active session
         try {
             currentSessionId?.let { sid ->
-                val stopMsg = org.json.JSONObject().apply {
+                val stopMsg = JSONObject().apply {
                     put("type", "stop_session")
                     put("session_id", sid)
                 }
@@ -122,7 +123,7 @@ class AudioService {
             val wavHeader = createWavHeaderFor16kMono16bit(chunk.size)
             val wavBytes = wavHeader + chunk
             val b64 = android.util.Base64.encodeToString(wavBytes, android.util.Base64.NO_WRAP)
-            val msg = org.json.JSONObject().apply {
+            val msg = JSONObject().apply {
                 put("type", "audio_chunk")
                 put("session_id", currentSessionId ?: UUID.randomUUID().toString().also { currentSessionId = it })
                 put("chunk_id", "chunk_${System.currentTimeMillis()}")
