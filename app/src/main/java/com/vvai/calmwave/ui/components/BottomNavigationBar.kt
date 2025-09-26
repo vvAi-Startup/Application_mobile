@@ -29,7 +29,6 @@ fun BottomNavigationBar(selected: String, modifier: Modifier = Modifier) {
         Row(
             modifier = modifier
                 .fillMaxWidth()
-                .navigationBarsPadding()
                 .height(barHeight)
                 .background(Color(0xFF222222)),
             horizontalArrangement = Arrangement.SpaceEvenly,
