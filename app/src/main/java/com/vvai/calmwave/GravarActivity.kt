@@ -64,7 +64,7 @@ class GravarActivity : ComponentActivity() {
             if (allPermissionsGranted) {
                 Toast.makeText(this, "Todas as permissões concedidas!", Toast.LENGTH_SHORT).show()
             } else {
-                Toast.makeText(this, "Algumas permissões foram negadas. O aplicativo pode não funcionar corretamente.", Toast.LENGTH_LONG).show()
+                
             }
         }
 

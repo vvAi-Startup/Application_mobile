@@ -68,13 +68,20 @@ class MainActivity : ComponentActivity() {
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Button(onClick = {
-                        startActivity(Intent(this@MainActivity, GravarActivity::class.java))
+                        // evita empilhar múltiplas instâncias: traz a activity existente para frente
+                        val intentGravar = Intent(this@MainActivity, GravarActivity::class.java).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                        }
+                        startActivity(intentGravar)
                     }) {
                         Text("Ir para Gravar")
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     Button(onClick = {
-                        startActivity(Intent(this@MainActivity, PlaylistActivity::class.java))
+                        val intentPlaylist = Intent(this@MainActivity, PlaylistActivity::class.java).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                        }
+                        startActivity(intentPlaylist)
                     }) {
                         Text("Ir para Playlist")
                     }
