@@ -25,7 +25,10 @@ class SplashActivity : ComponentActivity() {
         val alreadyShown = prefs.getBoolean("splash_shown", false)
         if (alreadyShown) {
             // skip splash and go straight to GravarActivity
-            startActivity(Intent(this, GravarActivity::class.java))
+            val intent = Intent(this, GravarActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            }
+            startActivity(intent)
             finish()
             return
         }
@@ -49,7 +52,10 @@ class SplashActivity : ComponentActivity() {
                         // mark splash as shown so next app open skips it
                         prefs.edit().putBoolean("splash_shown", true).apply()
                         // after progress completes, go to GravarActivity
-                        startActivity(Intent(this@SplashActivity, GravarActivity::class.java))
+                        val intent2 = Intent(this@SplashActivity, GravarActivity::class.java).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                        }
+                        startActivity(intent2)
                         finish()
                     }
                     LinearProgressIndicator(progress = progress, modifier = Modifier.fillMaxWidth())

@@ -39,7 +39,10 @@ fun BottomNavigationBar(selected: String, modifier: Modifier = Modifier) {
             modifier = Modifier
                 .clickable {
                     if (selected != "Playlists") {
-                        context.startActivity(Intent(context, PlaylistActivity::class.java))
+                        val intentPlaylist = Intent(context, PlaylistActivity::class.java).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                        }
+                        context.startActivity(intentPlaylist)
                     }
                 }
         ) {
@@ -61,7 +64,10 @@ fun BottomNavigationBar(selected: String, modifier: Modifier = Modifier) {
             modifier = Modifier
                 .clickable {
                     if (selected != "Gravação") {
-                        context.startActivity(Intent(context, GravarActivity::class.java))
+                        val intentGravar = Intent(context, GravarActivity::class.java).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                        }
+                        context.startActivity(intentGravar)
                     }
                 }
         ) {

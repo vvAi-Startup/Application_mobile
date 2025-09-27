@@ -69,6 +69,7 @@ fun TopBar(title: String, modifier: Modifier = Modifier) {
                         if (clickCount.value >= 3) {
                             clickCount.value = 0
                             val intent = Intent(context, MainActivity::class.java)
+                            intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                             context.startActivity(intent)
                         }
                     }
