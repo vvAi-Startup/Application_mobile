@@ -4,6 +4,7 @@
 
     <!-- Permissões necessárias para o aplicativo -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
         android:maxSdkVersion="32" />
@@ -16,6 +17,14 @@
         android:maxSdkVersion="32" />
     <!-- Para Android 13+ (API 33+), usar permissões específicas -->
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    
+    <!-- Declarações de funcionalidades de áudio -->
+    <uses-feature 
+        android:name="android.hardware.microphone" 
+        android:required="true" />
+    <uses-feature 
+        android:name="android.hardware.audio.output" 
+        android:required="true" />
 
     <application
         android:allowBackup="true"

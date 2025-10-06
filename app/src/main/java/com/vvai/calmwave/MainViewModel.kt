@@ -1,6 +1,8 @@
 package com.vvai.calmwave
 
 import android.content.Context
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -34,7 +36,14 @@ class MainViewModel(
         val playbackProgress: Float = 0f,
         val wavFiles: List<File> = emptyList(),
         val currentPlayingFile: String? = null,
-        val hasActiveAudio: Boolean = false // Para manter a barra visível mesmo quando pausado
+        val hasActiveAudio: Boolean = false, // Para manter a barra visível mesmo quando pausado
+        // Estados para áudio do WebSocket
+        val isWebSocketAudioPlaying: Boolean = false,
+        val isWebSocketAudioPaused: Boolean = false,
+        val webSocketAudioPosition: Long = 0,
+        val webSocketAudioDuration: Long = 0,
+        val webSocketAudioProgress: Float = 0f,
+        val hasWebSocketAudio: Boolean = false
     )
 
     // Variável para armazenar o caminho do arquivo de gravação atual
@@ -49,6 +58,10 @@ class MainViewModel(
     init {
         // Inicializa o AudioService com o contexto da aplicação
         audioService.init(context.applicationContext)
+        // Configura o callback para quando áudio WebSocket é recebido
+        audioService.setWebSocketAudioCallback {
+            onWebSocketAudioReceived()
+        }
         // Inicia um loop de atualização de reprodução
         startPlaybackMonitor()
     }
@@ -71,9 +84,15 @@ class MainViewModel(
                 audioService.connectWebSocket(wsUrl, context,
                     onConnected = {
                         println("WebSocket conectado")
+                        // Inicia o monitoramento do áudio WebSocket quando conectar
+                        startWebSocketAudio()
                     },
                     onFailure = { e ->
                         println("Falha no WebSocket: ${e.message}")
+                        // Se falhar a conexão, não exibe a barra de progresso
+                        _uiState.value = _uiState.value.copy(
+                            hasWebSocketAudio = false
+                        )
                     }
                 )
                 
@@ -362,6 +381,106 @@ class MainViewModel(
     fun resumeRecording() {
         wavRecorder.resumeRecording()
         _uiState.value = _uiState.value.copy(isPaused = false)
+    }
+
+    // Funções para controle do áudio do WebSocket
+    fun startWebSocketAudio() {
+        _uiState.value = _uiState.value.copy(
+            isWebSocketAudioPlaying = true,
+            isWebSocketAudioPaused = false,
+            hasWebSocketAudio = true,
+            webSocketAudioPosition = 0
+        )
+        // Inicia o monitoramento do progresso do áudio do WebSocket
+        startWebSocketAudioMonitor()
+    }
+
+    fun pauseWebSocketAudio() {
+        _uiState.value = _uiState.value.copy(
+            isWebSocketAudioPlaying = false,
+            isWebSocketAudioPaused = true
+        )
+        // Aqui você pode pausar o AudioTrack se necessário
+        audioService.pauseWebSocketAudio()
+    }
+
+    fun resumeWebSocketAudio() {
+        _uiState.value = _uiState.value.copy(
+            isWebSocketAudioPlaying = true,
+            isWebSocketAudioPaused = false
+        )
+        // Aqui você pode retomar o AudioTrack se necessário
+        audioService.resumeWebSocketAudio()
+    }
+
+    fun stopWebSocketAudio() {
+        _uiState.value = _uiState.value.copy(
+            isWebSocketAudioPlaying = false,
+            isWebSocketAudioPaused = false,
+            hasWebSocketAudio = false,
+            webSocketAudioPosition = 0,
+            webSocketAudioDuration = 0,
+            webSocketAudioProgress = 0f
+        )
+        audioService.stopWebSocketAudio()
+    }
+
+    fun seekWebSocketAudio(positionMs: Long) {
+        _uiState.value = _uiState.value.copy(
+            webSocketAudioPosition = positionMs,
+            webSocketAudioProgress = if (_uiState.value.webSocketAudioDuration > 0) {
+                positionMs.toFloat() / _uiState.value.webSocketAudioDuration.toFloat()
+            } else 0f
+        )
+        audioService.seekWebSocketAudio(positionMs)
+    }
+
+    private fun startWebSocketAudioMonitor() {
+        viewModelScope.launch {
+            var lastUpdateTime = 0L
+            
+            while (_uiState.value.hasWebSocketAudio) {
+                try {
+                    val currentTime = System.currentTimeMillis()
+                    
+                    // Throttling: atualiza apenas a cada 200ms para reduzir CPU
+                    if (currentTime - lastUpdateTime >= 200) {
+                        val position = audioService.getWebSocketAudioPosition()
+                        val duration = audioService.getWebSocketAudioDuration()
+                        
+                        // Só atualiza se houve mudança significativa
+                        val currentState = _uiState.value
+                        val positionDiff = kotlin.math.abs(currentState.webSocketAudioPosition - position)
+                        val durationDiff = kotlin.math.abs(currentState.webSocketAudioDuration - duration)
+                        
+                        if (positionDiff > 500 || durationDiff > 1000) { // 500ms ou 1s de diferença
+                            val progress = if (duration > 0) position.toFloat() / duration.toFloat() else 0f
+                            
+                            _uiState.value = currentState.copy(
+                                webSocketAudioPosition = position,
+                                webSocketAudioDuration = duration,
+                                webSocketAudioProgress = progress
+                            )
+                        }
+                        
+                        lastUpdateTime = currentTime
+                    }
+                    
+                    delay(200) // Reduzido para 200ms
+                } catch (e: Exception) {
+                    println("Erro no monitor WebSocket: ${e.message}")
+                    delay(1000) // Em caso de erro, aguarda mais tempo
+                    break
+                }
+            }
+        }
+    }
+
+    // Função para ser chamada quando áudio WebSocket é recebido
+    fun onWebSocketAudioReceived() {
+        if (!_uiState.value.hasWebSocketAudio) {
+            startWebSocketAudio()
+        }
     }
 }
 

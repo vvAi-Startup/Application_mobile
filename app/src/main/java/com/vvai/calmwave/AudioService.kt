@@ -11,7 +11,6 @@ import android.media.AudioManager
 import android.media.AudioTrack
 import android.media.AudioTrack.MODE_STREAM
 import kotlinx.coroutines.*
-import kotlinx.coroutines.Job
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
@@ -34,14 +33,30 @@ class AudioService {
     private var jsonWs: com.vvai.calmwave.service.WebSocketService? = null
     private var currentSessionId: String? = null
 
+    // Variáveis para controle do áudio do WebSocket
+    private var webSocketAudioBuffer = mutableListOf<ByteArray>()
+    private var webSocketAudioPosition: Long = 0
+    private var webSocketAudioDuration: Long = 0
+    private var isWebSocketAudioPlaying = false
+    private var isWebSocketAudioPaused = false
+    private var webSocketAudioStartTime: Long = 0
+
+    // Callback para notificar quando áudio WebSocket é recebido
+    private var onWebSocketAudioReceived: (() -> Unit)? = null
+
     fun connectWebSocket(apiWsUrl: String, context: Context, onConnected: (() -> Unit)? = null, onFailure: ((Throwable) -> Unit)? = null) {
         try {
+            println("=== CONECTANDO WEBSOCKET ===")
+            println("URL: $apiWsUrl")
+            
             // Prepare output file for processed audio
             val outDir = context.getExternalFilesDir(null)
             processedOutputFile = File(outDir, "processed_${System.currentTimeMillis()}.wav")
             processedOutputStream = FileOutputStream(processedOutputFile!!)
             writeWavHeader(processedOutputStream!!) // cabeçalho temporário
             processedDataBytes = 0
+            
+            println("Arquivo processado criado: ${processedOutputFile?.absolutePath}")
 
             stopAndReleaseAudioTrack()
             setupAudioTrack()
@@ -59,34 +74,264 @@ class AudioService {
                         "\"session_id\":\"${currentSessionId}\"" +
                     "}"
                     jsonWs?.sendText(startMsg)
+                    
+                    // Inicia o áudio WebSocket quando conectar
+                    isWebSocketAudioPlaying = false
+                    isWebSocketAudioPaused = false
+                    webSocketAudioPosition = 0
+                    webSocketAudioDuration = 0
+                    webSocketAudioBuffer.clear()
+                    
                     onConnected?.invoke()
                 }
                 override fun onTextMessage(text: String) {
                     // Expect JSON messages, possibly containing processed_audio_data (base64 of WAV)
                     try {
+                        println("WebSocket recebeu mensagem: ${text.take(100)}...")
                         val obj = JSONObject(text)
                         val type = obj.optString("type")
                         when (type) {
                             "audio_processed" -> {
                                 val processed = obj.optString("processed_audio_data", null)
                                 if (!processed.isNullOrEmpty()) {
-                                    val bytes = android.util.Base64.decode(processed, android.util.Base64.DEFAULT)
-                                    val pcm = extractPcm(bytes)
-                                    audioTrack?.write(pcm, 0, pcm.size)
-                                    processedOutputStream?.write(pcm)
-                                    processedDataBytes += pcm.size
+                                    try {
+                                        val bytes = android.util.Base64.decode(processed, android.util.Base64.DEFAULT)
+                                        if (bytes == null || bytes.isEmpty()) {
+                                            println("Erro: dados de áudio Base64 inválidos")
+                                            return
+                                        }
+                                        
+                                        val pcm = extractPcm(bytes)
+                                        if (pcm == null || pcm.isEmpty()) {
+                                            println("Erro: PCM extraído é nulo ou vazio")
+                                            return
+                                        }
+                                        
+                                        // Inicia o áudio do WebSocket se ainda não estiver ativo
+                                        if (!isWebSocketAudioPlaying && !isWebSocketAudioPaused) {
+                                            isWebSocketAudioPlaying = true
+                                            webSocketAudioStartTime = System.currentTimeMillis()
+                                            try {
+                                                audioTrack?.play()
+                                                println("AudioTrack iniciado para WebSocket")
+                                            } catch (e: Exception) {
+                                                println("Erro ao iniciar AudioTrack: ${e.message}")
+                                                return
+                                            }
+                                            // Notifica que áudio WebSocket foi recebido (apenas uma vez)
+                                            try {
+                                                onWebSocketAudioReceived?.invoke()
+                                            } catch (e: Exception) {
+                                                println("Erro ao invocar callback: ${e.message}")
+                                            }
+                                        }
+                                                          // Processa áudio diretamente para evitar complexidade de coroutines
+                                        try {
+                                            // Validação final antes do processamento
+                                            if (pcm.isEmpty() || !isWebSocketConnected) {
+                                                println("Estado inválido para processamento de áudio")
+                                                return
+                                            }
+                                            
+                                            // Adiciona ao buffer de forma thread-safe
+                                            synchronized(webSocketAudioBuffer) {
+                                                try {
+                                                    // Cria uma cópia defensiva para evitar problemas de concorrência
+                                                    val bufferCopy = ByteArray(pcm.size)
+                                                    System.arraycopy(pcm, 0, bufferCopy, 0, pcm.size)
+                                                    webSocketAudioBuffer.add(bufferCopy)
+                                                    
+                                                    // Limita o tamanho do buffer para evitar uso excessivo de memória
+                                                    while (webSocketAudioBuffer.size > 50) {
+                                                        webSocketAudioBuffer.removeFirstOrNull()
+                                                    }
+                                                } catch (e: Exception) {
+                                                    println("Erro ao gerenciar buffer WebSocket: ${e.message}")
+                                                    return
+                                                }
+                                            }
+                                            
+                                            // Reproduz o áudio se estiver ativo - com múltiplas validações
+                                            if (isWebSocketAudioPlaying && !isWebSocketAudioPaused) {
+                                                val currentTrack = audioTrack
+                                                if (currentTrack != null) {
+                                                    try {
+                                                        // Verifica múltiplos estados antes de escrever
+                                                        when {
+                                                            currentTrack.state != AudioTrack.STATE_INITIALIZED -> {
+                                                                println("AudioTrack não inicializado, estado: ${currentTrack.state}")
+                                                            }
+                                                            currentTrack.playState == AudioTrack.PLAYSTATE_STOPPED -> {
+                                                                println("AudioTrack parado, estado: ${currentTrack.playState}")
+                                                            }
+                                                            pcm.size <= 0 -> {
+                                                                println("PCM vazio ou inválido: ${pcm.size}")
+                                                            }
+                                                            else -> {
+                                                                // Escreve o áudio de forma segura
+                                                                val result = currentTrack.write(pcm, 0, pcm.size)
+                                                                when {
+                                                                    result > 0 -> {
+                                                                        // Sucesso - não faz nada
+                                                                    }
+                                                                    result == AudioTrack.ERROR_INVALID_OPERATION -> {
+                                                                        println("AudioTrack: Operação inválida")
+                                                                        isWebSocketAudioPlaying = false
+                                                                    }
+                                                                    result == AudioTrack.ERROR_BAD_VALUE -> {
+                                                                        println("AudioTrack: Valor inválido")
+                                                                    }
+                                                                    result == AudioTrack.ERROR_DEAD_OBJECT -> {
+                                                                        println("AudioTrack: Objeto morto")
+                                                                        isWebSocketAudioPlaying = false
+                                                                        audioTrack = null
+                                                                    }
+                                                                    else -> {
+                                                                        println("AudioTrack erro desconhecido: $result")
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    } catch (e: IllegalStateException) {
+                                                        println("AudioTrack IllegalStateException: ${e.message}")
+                                                        isWebSocketAudioPlaying = false
+                                                    } catch (e: Exception) {
+                                                        println("AudioTrack Exception geral: ${e.message}")
+                                                        e.printStackTrace()
+                                                    }
+                                                } else {
+                                                    println("AudioTrack é nulo durante reprodução WebSocket")
+                                                    isWebSocketAudioPlaying = false
+                                                }
+                                            }
+                                            
+                                            // Salva no arquivo processado com proteções robustas
+                                            val currentStream = processedOutputStream
+                                            if (currentStream != null) {
+                                                try {
+                                                    synchronized(currentStream) {
+                                                        // Verifica se o stream ainda está válido
+                                                        if (processedOutputStream == currentStream) {
+                                                            currentStream.write(pcm)
+                                                            currentStream.flush()
+                                                            
+                                                            // Atualiza contadores de forma thread-safe
+                                                            synchronized(this@AudioService) {
+                                                                processedDataBytes += pcm.size
+                                                                
+                                                                // Atualiza a duração estimada
+                                                                if (sampleRate > 0) {
+                                                                    webSocketAudioDuration = (processedDataBytes * 1000L) / (sampleRate * 2)
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                } catch (e: IOException) {
+                                                    println("Erro I/O ao salvar áudio processado: ${e.message}")
+                                                } catch (e: Exception) {
+                                                    println("Erro geral ao salvar áudio: ${e.message}")
+                                                }
+                                            }
+                                            
+                                        } catch (e: Exception) {
+                                            println("Erro crítico no processamento WebSocket: ${e.message}")
+                                            e.printStackTrace()
+                                            
+                                            // Recovery: para o áudio WebSocket em caso de erro crítico
+                                            try {
+                                                isWebSocketAudioPlaying = false
+                                                isWebSocketAudioPaused = false
+                                                val track = audioTrack
+                                                if (track != null && track.state == AudioTrack.STATE_INITIALIZED) {
+                                                    track.pause()
+                                                }
+                                            } catch (ex: Exception) {
+                                                println("Erro durante recovery: ${ex.message}")
+                                            }
+                                        }
+                                    } catch (e: Exception) {
+                                        println("Erro ao processar dados Base64: ${e.message}")
+                                        e.printStackTrace()
+                                    }
                                 }
                             }
                         }
                     } catch (e: Exception) {
+                        println("Erro ao processar mensagem WebSocket: ${e.message}")
                         e.printStackTrace()
                     }
                 }
                 override fun onClosed(code: Int, reason: String) {
+                    println("WebSocket fechado - código: $code, razão: $reason")
                     isWebSocketConnected = false
+                    
+                    // Limpa recursos de áudio WebSocket de forma segura
+                    try {
+                        isWebSocketAudioPlaying = false
+                        isWebSocketAudioPaused = false
+                        
+                        // Para o AudioTrack se estiver tocando
+                        audioTrack?.let { track ->
+                            try {
+                                if (track.playState == AudioTrack.PLAYSTATE_PLAYING) {
+                                    track.pause()
+                                }
+                            } catch (e: Exception) {
+                                println("Erro ao pausar AudioTrack no fechamento: ${e.message}")
+                            }
+                        }
+                        
+                        // Limpa o buffer de forma segura
+                        synchronized(webSocketAudioBuffer) {
+                            webSocketAudioBuffer.clear()
+                        }
+                        
+                        // Fecha o arquivo de saída se existir
+                        processedOutputStream?.let { stream ->
+                            try {
+                                synchronized(stream) {
+                                    stream.flush()
+                                    stream.close()
+                                }
+                            } catch (e: Exception) {
+                                println("Erro ao fechar stream: ${e.message}")
+                            }
+                        }
+                        processedOutputStream = null
+                        
+                    } catch (e: Exception) {
+                        println("Erro durante limpeza no fechamento do WebSocket: ${e.message}")
+                        e.printStackTrace()
+                    }
                 }
+                
                 override fun onFailure(t: Throwable) {
+                    println("WebSocket falhou: ${t.message}")
                     isWebSocketConnected = false
+                    
+                    // Realiza a mesma limpeza que no onClosed
+                    try {
+                        isWebSocketAudioPlaying = false
+                        isWebSocketAudioPaused = false
+                        
+                        audioTrack?.let { track ->
+                            try {
+                                if (track.playState == AudioTrack.PLAYSTATE_PLAYING) {
+                                    track.pause()
+                                }
+                            } catch (e: Exception) {
+                                println("Erro ao pausar AudioTrack na falha: ${e.message}")
+                            }
+                        }
+                        
+                        synchronized(webSocketAudioBuffer) {
+                            webSocketAudioBuffer.clear()
+                        }
+                        
+                    } catch (e: Exception) {
+                        println("Erro durante limpeza na falha do WebSocket: ${e.message}")
+                    }
+                    
                     onFailure?.invoke(t)
                 }
             }
@@ -98,6 +343,11 @@ class AudioService {
     }
 
     fun disconnectWebSocket() {
+        println("Desconectando WebSocket e limpando recursos...")
+        
+        // Para o processamento primeiro
+        isWebSocketConnected = false
+        
         // Send stop_session if we have an active session
         try {
             currentSessionId?.let { sid ->
@@ -107,14 +357,44 @@ class AudioService {
                 }
                 jsonWs?.sendText(stopMsg.toString())
             }
-        } catch (_: Exception) {}
-        webSocket?.close(1000, "Normal closure")
+        } catch (e: Exception) {
+            println("Erro ao enviar stop_session: ${e.message}")
+        }
+        
+        // Limpa o estado do áudio WebSocket primeiro
+        try {
+            stopWebSocketAudio()
+        } catch (e: Exception) {
+            println("Erro ao parar áudio WebSocket: ${e.message}")
+        }
+        
+        // Fecha conexões
+        try {
+            webSocket?.close(1000, "Normal closure")
+            jsonWs?.close()
+        } catch (e: Exception) {
+            println("Erro ao fechar WebSocket: ${e.message}")
+        }
+        
+        // Cancela jobs
+        try {
+            webSocketJob?.cancel()
+        } catch (e: Exception) {
+            println("Erro ao cancelar job: ${e.message}")
+        }
+        
+        // Finaliza output
+        try {
+            finalizeProcessedOutput()
+        } catch (e: Exception) {
+            println("Erro ao finalizar output: ${e.message}")
+        }
+        
+        // Limpa referências
         webSocket = null
-        isWebSocketConnected = false
-        webSocketJob?.cancel()
-        finalizeProcessedOutput()
-        jsonWs?.close()
         currentSessionId = null
+        
+        println("WebSocket desconectado e recursos limpos")
     }
 
     fun sendAudioChunkViaWebSocket(chunk: ByteArray) {
@@ -210,23 +490,43 @@ class AudioService {
     }
 
     private fun setupAudioTrack() {
-        val bufferSize = AudioTrack.getMinBufferSize(sampleRate, channelConfig, audioFormat)
-        
-        audioTrack = AudioTrack(
-            AudioManager.STREAM_MUSIC,
-            sampleRate,
-            channelConfig,
-            audioFormat,
-            bufferSize,
-            MODE_STREAM
-        )
-        
-        if (audioTrack?.state != AudioTrack.STATE_INITIALIZED) {
-            println("Erro: Falha na inicialização do AudioTrack.")
-            stopAndReleaseAudioTrack()
-            return
+        try {
+            val minBufferSize = AudioTrack.getMinBufferSize(sampleRate, channelConfig, audioFormat)
+            // Use um buffer maior para reduzir uso de CPU
+            val bufferSize = minBufferSize * 4
+            
+            audioTrack = AudioTrack(
+                AudioManager.STREAM_MUSIC,
+                sampleRate,
+                channelConfig,
+                audioFormat,
+                bufferSize,
+                MODE_STREAM
+            )
+            
+            if (audioTrack?.state != AudioTrack.STATE_INITIALIZED) {
+                println("Erro: Falha na inicialização do AudioTrack.")
+                stopAndReleaseAudioTrack()
+                return
+            }
+            
+            // Configura callback para melhor gerenciamento
+            audioTrack?.setPlaybackPositionUpdateListener(object : AudioTrack.OnPlaybackPositionUpdateListener {
+                override fun onMarkerReached(track: AudioTrack?) {
+                    // Implementar se necessário
+                }
+                
+                override fun onPeriodicNotification(track: AudioTrack?) {
+                    // Reduz chamadas desnecessárias
+                }
+            })
+            
+            audioTrack?.play()
+            println("AudioTrack inicializado com sucesso - Buffer: $bufferSize bytes")
+        } catch (e: Exception) {
+            println("Erro ao configurar AudioTrack: ${e.message}")
+            e.printStackTrace()
         }
-        audioTrack?.play()
     }
 
     private fun stopAndReleaseAudioTrack() {
@@ -994,26 +1294,90 @@ class AudioService {
     // Extrai PCM de bytes WAV (ou retorna os próprios bytes se já forem PCM)
     private fun extractPcm(data: ByteArray): ByteArray {
         return try {
-            if (data.size >= 44 && data[0] == 'R'.code.toByte() && data[1] == 'I'.code.toByte() && data[2] == 'F'.code.toByte() && data[3] == 'F'.code.toByte()) {
-                // Procura chunk 'data'
-                var offset = 12 // após RIFF(4) + size(4) + WAVE(4)
-                while (offset + 8 <= data.size) {
-                    val id = String(data, offset, 4)
-                    val size = java.nio.ByteBuffer.wrap(data, offset + 4, 4).order(java.nio.ByteOrder.LITTLE_ENDIAN).int
-                    if (id == "data") {
-                        val start = offset + 8
-                        val end = (start + size).coerceAtMost(data.size)
-                        return data.copyOfRange(start, end)
-                    }
-                    offset += 8 + size
-                }
-                // Se não achou, tenta remover cabeçalho padrão de 44 bytes
-                if (data.size > 44) data.copyOfRange(44, data.size) else data
-            } else {
-                data
+            // Validações básicas de entrada
+            if (data.isEmpty()) {
+                println("extractPcm: Dados vazios")
+                return ByteArray(0)
             }
-        } catch (_: Exception) {
-            data
+            
+            if (data.size < 44) {
+                println("extractPcm: Dados muito pequenos (${data.size} bytes), retornando como está")
+                return data
+            }
+            
+            // Verifica se é um arquivo WAV válido
+            val isWav = data.size >= 4 && 
+                       data[0] == 'R'.code.toByte() && 
+                       data[1] == 'I'.code.toByte() && 
+                       data[2] == 'F'.code.toByte() && 
+                       data[3] == 'F'.code.toByte()
+            
+            if (isWav) {
+                println("extractPcm: Processando arquivo WAV de ${data.size} bytes")
+                
+                // Procura chunk 'data' de forma mais segura
+                var offset = 12 // após RIFF(4) + size(4) + WAVE(4)
+                var iterations = 0
+                
+                while (offset + 8 <= data.size && iterations < 20) { // Limite de iterações para evitar loops infinitos
+                    try {
+                        // Verifica se há bytes suficientes para ler o ID
+                        if (offset + 4 > data.size) break
+                        
+                        val id = String(data.copyOfRange(offset, offset + 4), Charsets.US_ASCII)
+                        
+                        // Verifica se há bytes suficientes para ler o tamanho
+                        if (offset + 8 > data.size) break
+                        
+                        val sizeBytes = data.copyOfRange(offset + 4, offset + 8)
+                        val size = java.nio.ByteBuffer.wrap(sizeBytes).order(java.nio.ByteOrder.LITTLE_ENDIAN).int
+                        
+                        // Verifica se o tamanho é razoável
+                        if (size < 0 || size > data.size) {
+                            println("extractPcm: Tamanho inválido do chunk '$id': $size")
+                            break
+                        }
+                        
+                        if (id == "data") {
+                            val start = offset + 8
+                            val end = (start + size).coerceAtMost(data.size)
+                            
+                            if (start < data.size && end > start) {
+                                val pcmData = data.copyOfRange(start, end)
+                                println("extractPcm: Extraído ${pcmData.size} bytes de PCM")
+                                return pcmData
+                            } else {
+                                println("extractPcm: Índices inválidos para chunk data: start=$start, end=$end")
+                                break
+                            }
+                        }
+                        
+                        offset += 8 + size
+                        iterations++
+                        
+                    } catch (e: Exception) {
+                        println("extractPcm: Erro ao processar chunk na posição $offset: ${e.message}")
+                        break
+                    }
+                }
+                
+                // Se não encontrou o chunk 'data', tenta remover cabeçalho padrão
+                println("extractPcm: Chunk 'data' não encontrado, removendo cabeçalho padrão")
+                return if (data.size > 44) {
+                    data.copyOfRange(44, data.size)
+                } else {
+                    data
+                }
+            } else {
+                println("extractPcm: Não é um arquivo WAV, retornando dados como PCM bruto")
+                return data
+            }
+            
+        } catch (e: Exception) {
+            println("extractPcm: Erro durante extração: ${e.message}")
+            e.printStackTrace()
+            // Em caso de erro, retorna os dados originais
+            return data
         }
     }
 
@@ -1025,5 +1389,113 @@ class AudioService {
         return processedOutputFile?.absolutePath
     }
 
-    // Extrai PCM de bytes WAV (ou retorna os próprios bytes se já forem PCM)
+    // Funções para controle do áudio do WebSocket
+    fun pauseWebSocketAudio() {
+        if (isWebSocketAudioPlaying) {
+            isWebSocketAudioPaused = true
+            isWebSocketAudioPlaying = false
+            try {
+                audioTrack?.pause()
+                println("WebSocket audio pausado")
+            } catch (e: Exception) {
+                println("Erro ao pausar WebSocket audio: ${e.message}")
+            }
+        }
+    }
+
+    fun resumeWebSocketAudio() {
+        if (isWebSocketAudioPaused) {
+            isWebSocketAudioPaused = false
+            isWebSocketAudioPlaying = true
+            try {
+                audioTrack?.play()
+                webSocketAudioStartTime = System.currentTimeMillis() - webSocketAudioPosition
+                println("WebSocket audio retomado")
+            } catch (e: Exception) {
+                println("Erro ao retomar WebSocket audio: ${e.message}")
+            }
+        }
+    }
+
+    fun stopWebSocketAudio() {
+        println("Parando áudio WebSocket...")
+        
+        // Para todos os flags primeiro
+        isWebSocketAudioPlaying = false
+        isWebSocketAudioPaused = false
+        webSocketAudioPosition = 0
+        
+        try {
+            // Limpa o buffer de forma thread-safe
+            synchronized(webSocketAudioBuffer) {
+                webSocketAudioBuffer.clear()
+            }
+            
+            // Para e limpa o AudioTrack de forma segura
+            audioTrack?.let { track ->
+                try {
+                    if (track.state == AudioTrack.STATE_INITIALIZED) {
+                        if (track.playState == AudioTrack.PLAYSTATE_PLAYING) {
+                            track.pause() // Pausa primeiro
+                        }
+                        track.flush() // Limpa o buffer interno
+                        println("AudioTrack pausado e limpo para WebSocket")
+                    }
+                } catch (e: IllegalStateException) {
+                    println("AudioTrack em estado inválido ao parar: ${e.message}")
+                } catch (e: Exception) {
+                    println("Erro ao manipular AudioTrack: ${e.message}")
+                }
+            }
+            
+            // Limpa outros recursos relacionados
+            webSocketAudioStartTime = 0L
+            webSocketAudioDuration = 0L
+            
+            println("WebSocket audio parado e recursos limpos")
+            
+        } catch (e: Exception) {
+            println("Erro crítico ao parar WebSocket audio: ${e.message}")
+            e.printStackTrace()
+            
+            // Força limpeza mesmo com erro
+            try {
+                isWebSocketAudioPlaying = false
+                isWebSocketAudioPaused = false
+                webSocketAudioBuffer.clear()
+            } catch (ex: Exception) {
+                println("Erro na limpeza forçada: ${ex.message}")
+            }
+        }
+    }
+
+    fun seekWebSocketAudio(positionMs: Long) {
+        webSocketAudioPosition = positionMs
+        // Implementar lógica de seek se necessário
+        // Para áudio de streaming, pode ser complexo implementar seek
+    }
+
+    fun getWebSocketAudioPosition(): Long {
+        return try {
+            if (isWebSocketAudioPlaying && !isWebSocketAudioPaused) {
+                val currentTime = System.currentTimeMillis()
+                val calculatedPosition = webSocketAudioPosition + (currentTime - webSocketAudioStartTime)
+                // Limita a posição à duração máxima
+                minOf(calculatedPosition, webSocketAudioDuration)
+            } else {
+                webSocketAudioPosition
+            }
+        } catch (e: Exception) {
+            println("Erro ao calcular posição WebSocket: ${e.message}")
+            webSocketAudioPosition
+        }
+    }
+
+    fun getWebSocketAudioDuration(): Long = webSocketAudioDuration
+
+    fun isWebSocketAudioActive(): Boolean = isWebSocketAudioPlaying || isWebSocketAudioPaused
+
+    fun setWebSocketAudioCallback(callback: () -> Unit) {
+        onWebSocketAudioReceived = callback
+    }
 }

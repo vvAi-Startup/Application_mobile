@@ -64,7 +64,7 @@ class WavRecorder {
                     var chunkIndex = 0
                     var accumulatedData = ByteArray(0)
                     var lastChunkTime = System.currentTimeMillis()
-                    val chunkIntervalMs = 10000L // 10 segundos
+                    val chunkIntervalMs = 1000L // 1 segundos
 
                     while (isRecording) {
                         if (isPaused) {
