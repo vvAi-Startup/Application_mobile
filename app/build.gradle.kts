@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+
     kotlin("plugin.serialization") version "2.0.21"
 }
 
@@ -19,9 +20,9 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // BuildConfig fields from environment variables
-        val apiBaseUrl = System.getenv("API_BASE_URL") ?: "http://10.67.57.104:5000"
-        val wsBaseUrl = System.getenv("WS_BASE_URL") ?: "ws://10.67.57.104:5000"
-        val dbBaseUrl = System.getenv("DB_BASE_URL") ?: "http://10.67.57.104:5000"
+        val apiBaseUrl = System.getenv("API_BASE_URL") ?: "http://192.168.1.70:5000"
+        val wsBaseUrl = System.getenv("WS_BASE_URL") ?: "ws://192.168.1.70:5000"
+        val dbBaseUrl = System.getenv("DB_BASE_URL") ?: "http://192.168.1.70:5000"
         buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
         buildConfigField("String", "WS_BASE_URL", "\"$wsBaseUrl\"")
         buildConfigField("String", "DB_BASE_URL", "\"$dbBaseUrl\"")
@@ -53,14 +54,10 @@ android {
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.15"
     }
-    lint {
-        abortOnError = false
-    }
 }
 
 dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     // JSON processing library for Android
     implementation("org.json:json:20231013")

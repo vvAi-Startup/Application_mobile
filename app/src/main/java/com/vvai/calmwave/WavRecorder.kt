@@ -22,20 +22,35 @@ class WavRecorder {
     }
 
     private var audioRecorder: AudioRecord? = null
-    @Volatile private var isRecording = false // Usar @Volatile para garantir visibilidade entre threads
-    @Volatile private var isPaused = false // NOVO
+    @Volatile private var isRecording = false
+    @Volatile private var isPaused = false
     
     // Callback para enviar chunks em tempo real
-    private var chunkCallback: ((ByteArray, Int) -> Unit)? = null
+    // Parâmetros: (chunk completo, índice, tamanho do overlap)
+    private var chunkCallback: ((ByteArray, Int, Int) -> Unit)? = null
     
-    fun setChunkCallback(callback: (ByteArray, Int) -> Unit) {
+    // Configurações de chunking e overlap
+    private object ChunkingConfig {
+        const val CHUNK_INTERVAL_MS = 1000L // 1 segundo entre chunks
+        const val OVERLAP_DURATION_MS = 45L // 50ms de overlap entre chunks
+    }
+    
+    fun setChunkCallback(callback: (ByteArray, Int, Int) -> Unit) {
         chunkCallback = callback
+    }
+    
+    /**
+     * Calcula o tamanho do overlap em bytes baseado na duração em milliseconds
+     */
+    private fun calculateOverlapSize(overlapDurationMs: Long): Int {
+        return (AudioConstants.SAMPLE_RATE * AudioConstants.NUM_CHANNELS * 
+                AudioConstants.BITS_PER_SAMPLE / 8 * overlapDurationMs / 1000).toInt()
     }
 
     suspend fun startRecording(filePath: String) {
         val outputFile = File(filePath)
         isRecording = true
-        isPaused = false // NOVO
+        isPaused = false
 
         val minBufferSize = AudioRecord.getMinBufferSize(
             AudioConstants.SAMPLE_RATE,
@@ -55,7 +70,7 @@ class WavRecorder {
                     AudioConstants.CHANNEL_CONFIG,
                     AudioConstants.AUDIO_FORMAT,
                     bufferSize
-                ).apply { startRecording() } // Iniciar a gravação imediatamente
+                ).apply { startRecording() }
 
                 FileOutputStream(outputFile).use { fileOutputStream ->
                     writeWavHeader(fileOutputStream)
@@ -64,11 +79,15 @@ class WavRecorder {
                     var chunkIndex = 0
                     var accumulatedData = ByteArray(0)
                     var lastChunkTime = System.currentTimeMillis()
-                    val chunkIntervalMs = 10000L // 10 segundos
+                    val chunkIntervalMs = ChunkingConfig.CHUNK_INTERVAL_MS
+                    
+                    // Buffer para overlap - dados que serão incluídos na próxima chunk
+                    val overlapSizeBytes = calculateOverlapSize(ChunkingConfig.OVERLAP_DURATION_MS)
+                    var overlapBuffer = ByteArray(0)
 
                     while (isRecording) {
                         if (isPaused) {
-                            Thread.sleep(100) // Aguarda enquanto pausado
+                            Thread.sleep(100)
                             continue
                         }
                         val bytesRead = audioRecorder?.read(audioData, 0, bufferSize) ?: 0
@@ -80,20 +99,45 @@ class WavRecorder {
                              
                              val currentTime = System.currentTimeMillis()
                              
-                             // Envia chunk a cada 10 segundos
+                             // Envia chunk a cada 1 segundo
                              if (currentTime - lastChunkTime >= chunkIntervalMs && accumulatedData.isNotEmpty()) {
-                                 println("WavRecorder: Enviando chunk $chunkIndex com ${accumulatedData.size} bytes")
-                                 chunkCallback?.invoke(accumulatedData, chunkIndex)
+                                 // Combina overlap da chunk anterior com os dados atuais
+                                 val chunkToSend = if (overlapBuffer.isNotEmpty()) {
+                                     overlapBuffer + accumulatedData
+                                 } else {
+                                     accumulatedData
+                                 }
+                                 
+                                 println("WavRecorder: Enviando chunk $chunkIndex com ${chunkToSend.size} bytes")
+                                 
+                                 // Envia o chunk E o tamanho do overlap
+                                 val overlapSizeToReport = if (chunkIndex == 0) 0 else overlapBuffer.size
+                                 chunkCallback?.invoke(chunkToSend, chunkIndex, overlapSizeToReport)
+                                 
+                                 // Salva os últimos bytes para overlap da próxima chunk
+                                 overlapBuffer = if (accumulatedData.size >= overlapSizeBytes) {
+                                     accumulatedData.takeLast(overlapSizeBytes).toByteArray()
+                                 } else {
+                                     accumulatedData.copyOf()
+                                 }
+                                 
                                  chunkIndex++
                                  lastChunkTime = currentTime
-                                 accumulatedData = ByteArray(0) // Limpa os dados acumulados
+                                 accumulatedData = ByteArray(0)
                              }
                          }
                      }
                     
-                    // Envia qualquer dado restante
+                    // Envia qualquer dado restante com overlap
                     if (accumulatedData.isNotEmpty()) {
-                        chunkCallback?.invoke(accumulatedData, chunkIndex)
+                        val finalChunk = if (overlapBuffer.isNotEmpty()) {
+                            overlapBuffer + accumulatedData
+                        } else {
+                            accumulatedData
+                        }
+                        println("WavRecorder: Enviando chunk final $chunkIndex com ${finalChunk.size} bytes")
+                        val overlapSizeToReport = if (chunkIndex == 0) 0 else overlapBuffer.size
+                        chunkCallback?.invoke(finalChunk, chunkIndex, overlapSizeToReport)
                     }
                 }
             } catch (e: Exception) {

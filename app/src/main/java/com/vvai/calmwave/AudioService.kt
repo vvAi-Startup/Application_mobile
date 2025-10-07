@@ -1016,4 +1016,14 @@ class AudioService {
             data
         }
     }
+
+    fun getLatestProcessedFile(): File? {
+        return processedOutputFile
+    }
+
+    fun getCurrentProcessedFilePath(): String? {
+        return processedOutputFile?.absolutePath
+    }
+
+    // Extrai PCM de bytes WAV (ou retorna os próprios bytes se já forem PCM)
 }

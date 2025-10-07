@@ -12,12 +12,16 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import com.vvai.calmwave.service.AudioUploadService
 
 class MainViewModel(
     private val audioService: AudioService,
     private val wavRecorder: WavRecorder,
     private val context: Context
 ) : ViewModel() {
+    
+    // Serviço de upload
+    private val uploadService = AudioUploadService()
 
     // Definição do Estado da UI
     private val _uiState = MutableStateFlow(UiState())
@@ -34,11 +38,18 @@ class MainViewModel(
         val playbackProgress: Float = 0f,
         val wavFiles: List<File> = emptyList(),
         val currentPlayingFile: String? = null,
-        val hasActiveAudio: Boolean = false // Para manter a barra visível mesmo quando pausado
+        val hasActiveAudio: Boolean = false, // Para manter a barra visível mesmo quando pausado
+        val isUploading: Boolean = false,
+        val uploadProgress: Int = 0 // Progresso do upload em porcentagem
     )
 
     // Variável para armazenar o caminho do arquivo de gravação atual
     private var currentRecordingPath: String? = null
+    private var onProcessedAudioSaved: ((File) -> Unit)? = null
+
+    fun setProcessedAudioSaveCallback(callback: (File) -> Unit) {
+        onProcessedAudioSaved = callback
+    }
 
     // Bloco de inicialização para o ViewModel
     init {
@@ -72,20 +83,32 @@ class MainViewModel(
                     }
                 )
                 
-                wavRecorder.setChunkCallback { chunkData, chunkIndex ->
+                wavRecorder.setChunkCallback { chunkData, chunkIndex, overlapSize ->
                     viewModelScope.launch {
-                        println("MainViewModel: Recebendo chunk $chunkIndex do WavRecorder")
+                        println("MainViewModel: Recebendo chunk $chunkIndex do WavRecorder (${chunkData.size} bytes, overlap: $overlapSize)")
+                        
+                        // Remove o overlap para evitar duplicidade audível na reprodução
+                        val dataToProcess = if (chunkIndex > 0 && overlapSize > 0) {
+                            // Remove a porção de overlap do início da chunk (o áudio duplicado)
+                            chunkData.copyOfRange(overlapSize, chunkData.size)
+                        } else {
+                            // Primeira chunk não tem overlap a ser removido
+                            chunkData
+                        }
+                        
+                        println("MainViewModel: Dados após remoção do overlap: ${dataToProcess.size} bytes")
                         
                         // Atualiza o status para mostrar que está enviando chunk
                         _uiState.value = _uiState.value.copy(
                             statusText = "Enviando chunk ${chunkIndex + 1} via WebSocket..."
                         )
                         
+                        // Envia o chunk completo (COM overlap) para o backend para processamento robusto
                         audioService.sendAudioChunkViaWebSocket(chunkData)
                         
                         // Atualiza o status de volta para gravação
                         _uiState.value = _uiState.value.copy(
-                            statusText = "Gravando... (próximo chunk em 10s)"
+                            statusText = "Gravando... (próximo chunk em 1s)"
                         )
                     }
                 }
@@ -95,7 +118,7 @@ class MainViewModel(
                 wavRecorder.startRecording(filePath)
                 currentRecordingPath = filePath
                 
-                _uiState.value = _uiState.value.copy(statusText = "Gravando... (primeiro chunk será enviado em 10s)")
+                _uiState.value = _uiState.value.copy(statusText = "Gravando... (primeiro chunk será enviado em 1s)")
             } catch (e: Exception) {
                 e.printStackTrace()
                 _uiState.value = _uiState.value.copy(
@@ -123,9 +146,24 @@ class MainViewModel(
 
                 val audioFile = currentRecordingPath?.let { File(it) }
                 if (audioFile?.exists() == true) {
-                    _uiState.value = _uiState.value.copy(
-                        statusText = "Áudio salvo com sucesso!"
-                    )
+                    // Verifica se há um arquivo processado para salvar
+                    val processedFilePath = saveProcessedAudio()
+                    if (processedFilePath != null) {
+                        val processedFile = File(processedFilePath)
+                        // Chama o callback para salvar automaticamente no Downloads
+                        onProcessedAudioSaved?.invoke(processedFile)
+                        
+                        _uiState.value = _uiState.value.copy(
+                            statusText = "Áudio salvo! Iniciando upload..."
+                        )
+                        
+                        // Inicia o upload do arquivo processado
+                        uploadProcessedAudio(processedFile, apiEndpoint)
+                    } else {
+                        _uiState.value = _uiState.value.copy(
+                            statusText = "Áudio gravado salvo. Áudio processado não disponível."
+                        )
+                    }
                 } else {
                     _uiState.value = _uiState.value.copy(
                         statusText = "Erro: Arquivo não encontrado para processamento."
@@ -141,7 +179,117 @@ class MainViewModel(
                     isProcessing = false
                 )
                 // Recarrega a lista de arquivos após o processamento
-                loadWavFiles { emptyList() } // Será atualizado pelo MainActivity
+                // A MainActivity irá recarregar automaticamente via seu callback
+            }
+        }
+    }
+    
+    /**
+     * Faz upload do arquivo de áudio processado para o servidor
+     */
+    private fun uploadProcessedAudio(processedFile: File, uploadUrl: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                _uiState.value = _uiState.value.copy(
+                    isUploading = true,
+                    uploadProgress = 0,
+                    statusText = "Iniciando upload do áudio processado..."
+                )
+                
+                // Metadados adicionais para o upload
+                val metadata = mapOf(
+                    "original_filename" to (currentRecordingPath?.let { File(it).name } ?: "unknown"),
+                    "processed_at" to System.currentTimeMillis().toString(),
+                    "file_duration" to "unknown", // Pode ser calculado se necessário
+                    "processing_type" to "realtime_websocket"
+                )
+                
+                // Callback para acompanhar progresso do upload
+                val onProgress: (Long, Long) -> Unit = { uploaded, total ->
+                    val percentage = if (total > 0) (uploaded * 100 / total).toInt() else 0
+                    _uiState.value = _uiState.value.copy(
+                        uploadProgress = percentage,
+                        statusText = "Upload em progresso: $percentage%"
+                    )
+                }
+                
+                // Executa o upload
+                val result = uploadService.uploadProcessedAudio(
+                    uploadUrl = uploadUrl,
+                    audioFile = processedFile,
+                    sessionId = null, // Pode ser adicionado se disponível
+                    metadata = metadata,
+                    onProgress = onProgress
+                )
+                
+                // Trata o resultado
+                when (result) {
+                    is AudioUploadService.UploadResult.Success -> {
+                        _uiState.value = _uiState.value.copy(
+                            isUploading = false,
+                            uploadProgress = 100,
+                            statusText = "Upload concluído com sucesso! Áudio processado e enviado."
+                        )
+                        println("Upload bem-sucedido: ${result.response}")
+                    }
+                    is AudioUploadService.UploadResult.Error -> {
+                        _uiState.value = _uiState.value.copy(
+                            isUploading = false,
+                            uploadProgress = 0,
+                            statusText = "Áudio salvo, mas falha no upload: ${result.message}"
+                        )
+                        println("Erro no upload: ${result.message}")
+                    }
+                }
+                
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isUploading = false,
+                    uploadProgress = 0,
+                    statusText = "Áudio salvo, mas erro no upload: ${e.message}"
+                )
+                println("Exceção durante upload: ${e.message}")
+                e.printStackTrace()
+            }
+        }
+    }
+    
+    /**
+     * Permite fazer upload manual de um arquivo de áudio processado específico
+     */
+    fun uploadAudioFile(audioFile: File, uploadUrl: String = Config.uploadUrl) {
+        if (!audioFile.exists()) {
+            _uiState.value = _uiState.value.copy(
+                statusText = "Erro: Arquivo não encontrado para upload."
+            )
+            return
+        }
+        
+        uploadProcessedAudio(audioFile, uploadUrl)
+    }
+    
+    /**
+     * Cancela o upload em progresso (se implementado no futuro)
+     */
+    fun cancelUpload() {
+        if (_uiState.value.isUploading) {
+            _uiState.value = _uiState.value.copy(
+                isUploading = false,
+                uploadProgress = 0,
+                statusText = "Upload cancelado pelo usuário."
+            )
+        }
+    }
+
+    fun saveProcessedAudio(): String? {
+        return audioService.getLatestProcessedFile()?.let { processedFile ->
+            // Só tenta salvar se o arquivo processado existe e tem conteúdo
+            if (processedFile.exists() && processedFile.length() > 44) { // 44 bytes = cabeçalho WAV mínimo
+                // Esta função será chamada pela MainActivity para salvar no Downloads
+                onProcessedAudioSaved?.invoke(processedFile) // Chama o callback com o arquivo processado
+                return processedFile.absolutePath
+            } else {
+                null
             }
         }
     }
