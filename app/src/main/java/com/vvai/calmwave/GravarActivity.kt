@@ -253,7 +253,7 @@ class GravarActivity : ComponentActivity() {
                                 Button(
                                     onClick = {
                                         // Encerra gravação
-                                        viewModel.stopRecordingAndProcess(Config.uploadUrl)
+                                        viewModel.stopRecordingAndProcess(Config.transcriptionUrl)
                                     },
                                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0B6B63)),
                                     shape = RoundedCornerShape(40.dp),

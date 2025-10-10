@@ -148,22 +148,43 @@ class MainViewModel(
                 if (audioFile?.exists() == true) {
                     // Verifica se há um arquivo processado para salvar
                     val processedFilePath = saveProcessedAudio()
+                    val fileToTranscribe: File
+                    val audioSource: String
+                    
                     if (processedFilePath != null) {
                         val processedFile = File(processedFilePath)
                         // Chama o callback para salvar automaticamente no Downloads
                         onProcessedAudioSaved?.invoke(processedFile)
-                        
-                        _uiState.value = _uiState.value.copy(
-                            statusText = "Áudio salvo! Iniciando upload..."
-                        )
-                        
-                        // Inicia o upload do arquivo processado
-                        uploadProcessedAudio(processedFile, apiEndpoint)
+                        fileToTranscribe = processedFile
+                        audioSource = "processado"
+                        println("📁 Usando arquivo processado para transcrição: ${processedFile.absolutePath}")
                     } else {
-                        _uiState.value = _uiState.value.copy(
-                            statusText = "Áudio gravado salvo. Áudio processado não disponível."
-                        )
+                        // Fallback: usa o arquivo original da gravação
+                        fileToTranscribe = audioFile
+                        audioSource = "original"
+                        println("📁 Arquivo processado indisponível, usando arquivo original: ${audioFile.absolutePath}")
                     }
+                    
+                    _uiState.value = _uiState.value.copy(
+                        statusText = "Áudio salvo! Testando conectividade..."
+                    )
+                    
+                    // Testa conectividade antes de tentar transcrição
+                    val isEndpointAvailable = uploadService.testTranscriptionEndpoint(apiEndpoint)
+                    if (!isEndpointAvailable) {
+                        _uiState.value = _uiState.value.copy(
+                            statusText = "⚠️ Servidor de transcrição indisponível. Áudio salvo localmente."
+                        )
+                        return@launch
+                    }
+                    
+                    _uiState.value = _uiState.value.copy(
+                        statusText = "Servidor OK! Iniciando transcrição ($audioSource)..."
+                    )
+                    
+                    // Inicia a transcrição do arquivo (processado ou original)
+                    uploadProcessedAudio(fileToTranscribe, apiEndpoint)
+                    
                 } else {
                     _uiState.value = _uiState.value.copy(
                         statusText = "Erro: Arquivo não encontrado para processamento."
@@ -185,60 +206,73 @@ class MainViewModel(
     }
     
     /**
-     * Faz upload do arquivo de áudio processado para o servidor
+     * Faz transcrição do arquivo de áudio processado usando OpenAI Whisper
      */
     private fun uploadProcessedAudio(processedFile: File, uploadUrl: String) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
+                println("=== INICIANDO TRANSCRIÇÃO ===")
+                println("Arquivo: ${processedFile.absolutePath}")
+                println("Tamanho: ${processedFile.length()} bytes")
+                println("URL de transcrição: $uploadUrl")
+                
                 _uiState.value = _uiState.value.copy(
                     isUploading = true,
                     uploadProgress = 0,
-                    statusText = "Iniciando upload do áudio processado..."
+                    statusText = "Iniciando transcrição do áudio..."
                 )
                 
-                // Metadados adicionais para o upload
-                val metadata = mapOf(
-                    "original_filename" to (currentRecordingPath?.let { File(it).name } ?: "unknown"),
-                    "processed_at" to System.currentTimeMillis().toString(),
-                    "file_duration" to "unknown", // Pode ser calculado se necessário
-                    "processing_type" to "realtime_websocket"
-                )
-                
-                // Callback para acompanhar progresso do upload
+                // Callback para acompanhar progresso do upload/transcrição
                 val onProgress: (Long, Long) -> Unit = { uploaded, total ->
                     val percentage = if (total > 0) (uploaded * 100 / total).toInt() else 0
                     _uiState.value = _uiState.value.copy(
                         uploadProgress = percentage,
-                        statusText = "Upload em progresso: $percentage%"
+                        statusText = when {
+                            percentage < 50 -> "Enviando áudio: $percentage%"
+                            percentage < 90 -> "Processando transcrição: $percentage%"
+                            else -> "Finalizando transcrição: $percentage%"
+                        }
                     )
                 }
                 
-                // Executa o upload
-                val result = uploadService.uploadProcessedAudio(
-                    uploadUrl = uploadUrl,
-                    audioFile = processedFile,
-                    sessionId = null, // Pode ser adicionado se disponível
-                    metadata = metadata,
-                    onProgress = onProgress
-                )
+                // Executa a transcrição usando o método conveniente ou personalizado
+                val result = if (uploadUrl.contains("transcricao")) {
+                    // Usa o método conveniente para transcrição
+                    uploadService.transcribeAudio(
+                        audioFile = processedFile,
+                        onProgress = onProgress
+                    )
+                } else {
+                    // Usa o método customizado se for outro endpoint
+                    uploadService.uploadProcessedAudio(
+                        uploadUrl = uploadUrl,
+                        audioFile = processedFile,
+                        language = "pt",
+                        modelSize = "medium",
+                        highQuality = true,
+                        onProgress = onProgress
+                    )
+                }
                 
-                // Trata o resultado
+                // Trata o resultado da transcrição
                 when (result) {
                     is AudioUploadService.UploadResult.Success -> {
                         _uiState.value = _uiState.value.copy(
                             isUploading = false,
                             uploadProgress = 100,
-                            statusText = "Upload concluído com sucesso! Áudio processado e enviado."
+                            statusText = "Transcrição concluída com sucesso! Texto extraído do áudio."
                         )
-                        println("Upload bem-sucedido: ${result.response}")
+                        println("Transcrição bem-sucedida: ${result.response}")
+                        // TODO: Aqui você pode processar o texto transcrito (result.response)
+                        // Por exemplo, salvar em um arquivo ou exibir na interface
                     }
                     is AudioUploadService.UploadResult.Error -> {
                         _uiState.value = _uiState.value.copy(
                             isUploading = false,
                             uploadProgress = 0,
-                            statusText = "Áudio salvo, mas falha no upload: ${result.message}"
+                            statusText = "Áudio salvo, mas falha na transcrição: ${result.message}"
                         )
-                        println("Erro no upload: ${result.message}")
+                        println("Erro na transcrição: ${result.message}")
                     }
                 }
                 
@@ -246,26 +280,36 @@ class MainViewModel(
                 _uiState.value = _uiState.value.copy(
                     isUploading = false,
                     uploadProgress = 0,
-                    statusText = "Áudio salvo, mas erro no upload: ${e.message}"
+                    statusText = "Áudio salvo, mas erro na transcrição: ${e.message}"
                 )
-                println("Exceção durante upload: ${e.message}")
+                println("Exceção durante transcrição: ${e.message}")
                 e.printStackTrace()
             }
         }
     }
     
     /**
-     * Permite fazer upload manual de um arquivo de áudio processado específico
+     * Permite fazer transcrição manual de um arquivo de áudio específico
      */
-    fun uploadAudioFile(audioFile: File, uploadUrl: String = Config.uploadUrl) {
+    fun transcribeAudioFile(audioFile: File, uploadUrl: String? = null) {
         if (!audioFile.exists()) {
             _uiState.value = _uiState.value.copy(
-                statusText = "Erro: Arquivo não encontrado para upload."
+                statusText = "Erro: Arquivo não encontrado para transcrição."
             )
             return
         }
         
-        uploadProcessedAudio(audioFile, uploadUrl)
+        // Usa o endpoint de transcrição padrão se não especificado
+        val transcriptionUrl = uploadUrl ?: Config.transcriptionUrl
+        uploadProcessedAudio(audioFile, transcriptionUrl)
+    }
+    
+    /**
+     * Método legado para compatibilidade - redireciona para transcrição
+     */
+    @Deprecated("Use transcribeAudioFile instead", ReplaceWith("transcribeAudioFile(audioFile, uploadUrl)"))
+    fun uploadAudioFile(audioFile: File, uploadUrl: String = Config.transcriptionUrl) {
+        transcribeAudioFile(audioFile, uploadUrl)
     }
     
     /**
@@ -282,15 +326,27 @@ class MainViewModel(
     }
 
     fun saveProcessedAudio(): String? {
-        return audioService.getLatestProcessedFile()?.let { processedFile ->
+        println("=== SALVANDO ÁUDIO PROCESSADO ===")
+        val processedFile = audioService.getLatestProcessedFile()
+        println("Arquivo processado obtido: ${processedFile?.absolutePath}")
+        
+        return processedFile?.let { file ->
+            println("Arquivo existe: ${file.exists()}")
+            println("Tamanho do arquivo: ${file.length()} bytes")
+            
             // Só tenta salvar se o arquivo processado existe e tem conteúdo
-            if (processedFile.exists() && processedFile.length() > 44) { // 44 bytes = cabeçalho WAV mínimo
+            if (file.exists() && file.length() > 44) { // 44 bytes = cabeçalho WAV mínimo
+                println("✅ Arquivo processado válido - salvando...")
                 // Esta função será chamada pela MainActivity para salvar no Downloads
-                onProcessedAudioSaved?.invoke(processedFile) // Chama o callback com o arquivo processado
-                return processedFile.absolutePath
+                onProcessedAudioSaved?.invoke(file) // Chama o callback com o arquivo processado
+                return file.absolutePath
             } else {
+                println("❌ Arquivo processado inválido ou muito pequeno")
                 null
             }
+        } ?: run {
+            println("❌ Nenhum arquivo processado encontrado")
+            null
         }
     }
 

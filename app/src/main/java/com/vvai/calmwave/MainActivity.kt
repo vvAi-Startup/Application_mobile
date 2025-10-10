@@ -126,7 +126,7 @@ class MainActivity : ComponentActivity() {
                             }
                         },
                         onStopClicked = {
-                            viewModel.stopRecordingAndProcess(apiEndpoint = Config.uploadUrl)
+                            viewModel.stopRecordingAndProcess(apiEndpoint = Config.transcriptionUrl)
                         },
                         onTestAPIClicked = {
                             viewModel.testAPI()
