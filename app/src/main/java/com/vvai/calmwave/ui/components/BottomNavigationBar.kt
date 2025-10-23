@@ -11,6 +11,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PlaylistPlay
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -20,6 +21,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.vvai.calmwave.GravarActivity
 import com.vvai.calmwave.PlaylistActivity
+import com.vvai.calmwave.PrincipalActivity
 
 @Composable
 fun BottomNavigationBar(selected: String, modifier: Modifier = Modifier) {
@@ -34,6 +36,32 @@ fun BottomNavigationBar(selected: String, modifier: Modifier = Modifier) {
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
+        // Principal (central) button
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier
+                .clickable {
+                    if (selected != "Principal") {
+                        val intent = Intent(context, PrincipalActivity::class.java).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                        }
+                        context.startActivity(intent)
+                    }
+                }
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Home,
+                contentDescription = "Ícone Principal",
+                tint = if (selected == "Principal") Color(0xFF2DC9C6) else Color.White,
+                modifier = Modifier.size(24.dp)
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "Principal",
+                color = if (selected == "Principal") Color(0xFF2DC9C6) else Color.White,
+            )
+        }
+
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
