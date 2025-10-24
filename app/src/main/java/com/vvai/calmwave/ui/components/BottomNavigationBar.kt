@@ -2,6 +2,7 @@ package com.vvai.calmwave.components
 
 import android.content.Context
 import android.content.Intent
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -12,6 +13,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -22,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import com.vvai.calmwave.GravarActivity
 import com.vvai.calmwave.PlaylistActivity
 import com.vvai.calmwave.PrincipalActivity
+import com.vvai.calmwave.R
 
 @Composable
 fun BottomNavigationBar(selected: String, modifier: Modifier = Modifier) {
@@ -36,32 +40,7 @@ fun BottomNavigationBar(selected: String, modifier: Modifier = Modifier) {
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
-        // Principal (central) button
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier
-                .clickable {
-                    if (selected != "Principal") {
-                        val intent = Intent(context, PrincipalActivity::class.java).apply {
-                            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                        }
-                        context.startActivity(intent)
-                    }
-                }
-        ) {
-            Icon(
-                imageVector = Icons.Filled.Home,
-                contentDescription = "Ícone Principal",
-                tint = if (selected == "Principal") Color(0xFF2DC9C6) else Color.White,
-                modifier = Modifier.size(24.dp)
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "Principal",
-                color = if (selected == "Principal") Color(0xFF2DC9C6) else Color.White,
-            )
-        }
-
+        // Playlists (left)
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
@@ -87,6 +66,33 @@ fun BottomNavigationBar(selected: String, modifier: Modifier = Modifier) {
             )
         }
 
+        // Principal (center) - logo only
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier
+                .clickable {
+                    if (selected != "Principal") {
+                        val intent = Intent(context, PrincipalActivity::class.java).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                        }
+                        context.startActivity(intent)
+                    }
+                }
+        ) {
+            Image(
+                painter = painterResource(id = R.drawable.logo),
+                contentDescription = "Logo",
+                modifier = Modifier.size(36.dp),
+                contentScale = ContentScale.Fit
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "Início",
+                color = if (selected == "Principal") Color(0xFF2DC9C6) else Color.White,
+            )
+        }
+
+        // Gravação (right)
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier

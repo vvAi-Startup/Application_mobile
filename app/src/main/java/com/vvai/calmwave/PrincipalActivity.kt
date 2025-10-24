@@ -1,5 +1,6 @@
 package com.vvai.calmwave
 
+import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -13,6 +14,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateListOf
@@ -26,13 +28,26 @@ import com.vvai.calmwave.components.BottomNavigationBar
 import com.vvai.calmwave.components.TopBar
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Headset
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.ui.platform.LocalContext
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothDevice
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.IntentFilter
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import com.vvai.calmwave.GravarActivity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.lerp
 import com.vvai.calmwave.R
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 
 // Top-level model used by several composables
 data class PlaylistItem(val title: String, val subtitle: String = "", val color: Color)
@@ -49,8 +64,20 @@ class PrincipalActivity : ComponentActivity() {
 @Composable
 fun PrincipalScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     // Playlists state loaded from SharedPreferences
     val playlistsState = remember { mutableStateListOf<PlaylistItem>() }
+    var foneConnected by remember { mutableStateOf(false) }
+    var showBluetoothDialog by remember { mutableStateOf(false) }
+    val pairedDevices = remember { mutableStateListOf<String>() }
+
+    fun loadPairedDevices() {
+        pairedDevices.clear()
+        val adapter = BluetoothAdapter.getDefaultAdapter()
+        adapter?.bondedDevices?.forEach { d ->
+            pairedDevices.add((d.name ?: "Desconhecido") + " - " + d.address)
+        }
+    }
 
     fun loadPlaylists() {
         val prefs = context.getSharedPreferences("playlists_prefs", 0)
@@ -75,7 +102,59 @@ fun PrincipalScreen(modifier: Modifier = Modifier) {
         }
     }
 
+    // reload when the composable resumes (every time user returns to this screen)
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                loadPlaylists()
+                loadPairedDevices()
+                // also check basic connection state
+                val adapter = BluetoothAdapter.getDefaultAdapter()
+                // if any ACL connected devices, consider headphones connected
+                val connected = try {
+                    adapter?.bondedDevices?.any { device ->
+                        // best-effort: check if device is connected by attempting getName (not reliable)
+                        false
+                    } ?: false
+                } catch (_: Exception) { false }
+                // keep existing foneConnected state if system broadcasts will update it
+            }
+        }
+        // register system receiver for headset (wired) and bluetooth ACL connect/disconnect
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context?, intent: Intent?) {
+                if (intent == null) return
+                when (intent.action) {
+                    BluetoothDevice.ACTION_ACL_CONNECTED -> {
+                        foneConnected = true
+                        loadPairedDevices()
+                    }
+                    BluetoothDevice.ACTION_ACL_DISCONNECTED -> {
+                        foneConnected = false
+                    }
+                    Intent.ACTION_HEADSET_PLUG -> {
+                        val state = intent.getIntExtra("state", -1)
+                        foneConnected = state == 1
+                    }
+                }
+            }
+        }
+        val filter = IntentFilter().apply {
+            addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
+            addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
+            addAction(Intent.ACTION_HEADSET_PLUG)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        context.registerReceiver(receiver, filter)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            try { context.unregisterReceiver(receiver) } catch (_: Exception) { }
+        }
+    }
+
     LaunchedEffect(Unit) { loadPlaylists() }
+    // initial paired devices
+    LaunchedEffect(Unit) { loadPairedDevices() }
     Scaffold(
         topBar = { TopBar(title = "Calm Wave") },
         bottomBar = {
@@ -98,14 +177,18 @@ fun PrincipalScreen(modifier: Modifier = Modifier) {
             )
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                // Conectar com orientador (abre modal bluetooth)
                 StatusCard(
                     title = "Conectar com\nOrientador",
                     color = Color(0xFF2DC9C6),
-                    modifier = Modifier.weight(1f)
+                    icon = Icons.Filled.Mic,
+                    modifier = Modifier.weight(1f).clickable { showBluetoothDialog = true }
                 )
+                // Fone status (dinâmico)
                 StatusCard(
-                    title = "Fone\ndesconectado",
-                    color = Color(0xFF9EEFD8),
+                    title = if (foneConnected) "Fone\nconectado" else "Fone\ndesconectado",
+                    color = if (foneConnected) Color(0xFF1F8B78) else Color(0xFF9EEFD8),
+                    icon = Icons.Filled.Headset,
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -147,7 +230,7 @@ fun PrincipalScreen(modifier: Modifier = Modifier) {
                 )
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(35.dp))
 
             Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 RecordButton(onClick = {
@@ -155,6 +238,8 @@ fun PrincipalScreen(modifier: Modifier = Modifier) {
                         addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                     }
                     context.startActivity(intent)
+                    // finish PrincipalActivity so it does not remain in back stack
+                    (context as? Activity)?.finish()
                 })
             }
 
@@ -167,16 +252,47 @@ fun PrincipalScreen(modifier: Modifier = Modifier) {
                     modifier = Modifier
                         .size(width = 95.dp, height = 123.dp)
                         // nudge down so it visually touches the bottom bar; adjust value if needed
-                        .offset(y = 30.dp)
+                        .offset(y = 10.dp)
                 )
             }
 
         }
     }
+
+    // Bluetooth modal
+    if (showBluetoothDialog) {
+        AlertDialog(
+            onDismissRequest = { showBluetoothDialog = false },
+            title = { Text("Dispositivos pareados") },
+            text = {
+                Column {
+                    if (pairedDevices.isEmpty()) {
+                        Text("Nenhum dispositivo pareado encontrado.")
+                    } else {
+                        pairedDevices.forEach { d ->
+                            Row(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(text = d, modifier = Modifier.weight(1f))
+                                TextButton(onClick = {
+                                    // simulate connect
+                                    foneConnected = true
+                                    showBluetoothDialog = false
+                                }) { Text("Conectar") }
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    TextButton(onClick = { loadPairedDevices() }) { Text("Atualizar") }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showBluetoothDialog = false }) { Text("Fechar") }
+            }
+        )
+    }
 }
 
 @Composable
-fun StatusCard(title: String, color: Color, modifier: Modifier = Modifier) {
+fun StatusCard(title: String, color: Color, icon: androidx.compose.ui.graphics.vector.ImageVector? = null, modifier: Modifier = Modifier) {
     Surface(
         modifier = modifier
             .height(90.dp),
@@ -185,7 +301,12 @@ fun StatusCard(title: String, color: Color, modifier: Modifier = Modifier) {
         tonalElevation = 4.dp
     ) {
         Box(modifier = Modifier.fillMaxSize().padding(12.dp), contentAlignment = Alignment.CenterStart) {
-            Text(text = title, color = Color.White, fontWeight = FontWeight.Medium)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (icon != null) {
+                    Icon(imageVector = icon, contentDescription = null, tint = Color.White)
+                }
+                Text(text = title, color = Color.White, fontWeight = FontWeight.Medium)
+            }
         }
     }
 }
