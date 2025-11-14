@@ -20,20 +20,49 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.vvai.calmwave.GravarActivity
 import com.vvai.calmwave.PlaylistActivity
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.runtime.getValue
 
 @Composable
 fun BottomNavigationBar(selected: String, modifier: Modifier = Modifier) {
     val context = LocalContext.current
-        // Fixed height bar so it appears same size across screens
-        val barHeight = 72.dp
-        Row(
-            modifier = modifier
-                .fillMaxWidth()
-                .height(barHeight)
-                .background(Color(0xFF222222)),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+    val barHeight = 72.dp
+    
+    // Animações para Playlists
+    val playlistsIconSize by animateDpAsState(
+        targetValue = if (selected == "Playlists") 32.dp else 24.dp,
+        animationSpec = tween(durationMillis = 300),
+        label = "playlistsIconSize"
+    )
+    val playlistsColor by animateColorAsState(
+        targetValue = if (selected == "Playlists") Color(0xFF2DC9C6) else Color.White,
+        animationSpec = tween(durationMillis = 300),
+        label = "playlistsColor"
+    )
+    
+    // Animações para Gravação
+    val gravacaoIconSize by animateDpAsState(
+        targetValue = if (selected == "Gravação") 32.dp else 24.dp,
+        animationSpec = tween(durationMillis = 300),
+        label = "gravacaoIconSize"
+    )
+    val gravacaoColor by animateColorAsState(
+        targetValue = if (selected == "Gravação") Color(0xFF2DC9C6) else Color.White,
+        animationSpec = tween(durationMillis = 300),
+        label = "gravacaoColor"
+    )
+    
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(Color(0xFF222222))
+            .navigationBarsPadding()
+            .height(barHeight),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
@@ -49,13 +78,13 @@ fun BottomNavigationBar(selected: String, modifier: Modifier = Modifier) {
             Icon(
                 imageVector = Icons.Filled.PlaylistPlay,
                 contentDescription = "Ícone Playlists",
-                tint = if (selected == "Playlists") Color(0xFF2DC9C6) else Color.White,
-                modifier = Modifier.size(24.dp)
+                tint = playlistsColor,
+                modifier = Modifier.size(playlistsIconSize)
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = "Playlists",
-                color = if (selected == "Playlists") Color(0xFF2DC9C6) else Color.White,
+                color = playlistsColor,
             )
         }
 
@@ -74,13 +103,13 @@ fun BottomNavigationBar(selected: String, modifier: Modifier = Modifier) {
             Icon(
                 imageVector = Icons.Filled.Mic,
                 contentDescription = "Ícone Gravação",
-                tint = if (selected == "Gravação") Color(0xFF2DC9C6) else Color.White,
-                modifier = Modifier.size(24.dp)
+                tint = gravacaoColor,
+                modifier = Modifier.size(gravacaoIconSize)
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = "Gravação",
-                color = if (selected == "Gravação") Color(0xFF2DC9C6) else Color.White,
+                color = gravacaoColor,
             )
         }
     }

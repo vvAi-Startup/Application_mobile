@@ -3,6 +3,7 @@ package com.vvai.calmwave
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -47,6 +48,11 @@ class PlaylistActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        
+        // Define animação de entrada (deslizar da esquerda ao vir de Gravação)
+        overridePendingTransition(R.anim.slide_in_left, R.anim.slide_out_right)
+        
         exoPlayerAudioPlayer = ExoPlayerAudioPlayer(this)
         setContent {
             CalmWaveTheme {
@@ -145,6 +151,10 @@ class PlaylistActivity : ComponentActivity() {
                 modifier = Modifier.fillMaxSize(),
                 color = Color(0xFFF7F7F7)
             ) {
+                // Calcula a altura da BottomNavigationBar + padding das barras de navegação do sistema
+                val navigationBarHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+                val bottomBarTotalHeight = 72.dp + navigationBarHeight
+                
                 Column(modifier = Modifier.fillMaxSize()) {
                     Box(modifier = Modifier.weight(1f)) {
                         Column(
@@ -156,8 +166,8 @@ class PlaylistActivity : ComponentActivity() {
                             // colar a TopBar no topo da tela respeitando a barra de status
                             TopBar(title = "Playlists", modifier = Modifier
                                 .fillMaxWidth()
-                                .statusBarsPadding()
                             )
+                            Spacer(modifier = Modifier.height(20.dp))
                             // Tabs and Search
                             Row(
                                 modifier = Modifier
@@ -410,7 +420,7 @@ class PlaylistActivity : ComponentActivity() {
                                         contentColor = Color.White,
                                         modifier = Modifier
                                             .align(Alignment.BottomEnd)
-                                            .padding(end = 24.dp, bottom = 88.dp) // padding extra para não sobrepor a BottomNavigationBar
+                                            .padding(end = 24.dp, bottom = bottomBarTotalHeight + 16.dp) // padding dinâmico para não sobrepor a BottomNavigationBar
                                     ) {
                                         Icon(Icons.Filled.Add, contentDescription = "Nova Playlist")
                                     }

@@ -71,6 +71,8 @@ dependencies {
     implementation(libs.androidx.material3)
     // Material icons (extended) - provides Icons.Filled.Pause / PlayArrow
     implementation("androidx.compose.material:material-icons-extended")
+    // Accompanist System UI Controller para controlar status bar
+    implementation("com.google.accompanist:accompanist-systemuicontroller:0.34.0")
     // ExoPlayer Media3 (versão mais recente recomendada)
     implementation("androidx.media3:media3-exoplayer:1.8.0")
     implementation("androidx.media3:media3-ui:1.8.0")

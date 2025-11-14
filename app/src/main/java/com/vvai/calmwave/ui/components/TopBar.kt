@@ -23,15 +23,36 @@ import android.content.Intent
 import com.vvai.calmwave.MainActivity
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import com.google.accompanist.systemuicontroller.rememberSystemUiController
 
 @Composable
 fun TopBar(title: String, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val clickCount = remember { mutableStateOf(0) }
+    
+    // Configura a cor da status bar
+    val systemUiController = rememberSystemUiController()
+    val statusBarColor = Color(0xFFE6F7FA)
+    
+    systemUiController.setStatusBarColor(
+        color = statusBarColor,
+        darkIcons = true // Ícones escuros (pretos) para contraste com fundo claro
+    )
+    
     Box(
         modifier = modifier
             .fillMaxWidth()
+            .statusBarsPadding() // Adiciona padding para a status bar
+            .shadow(
+                elevation = 6.dp,
+                shape = RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp),
+                clip = false
+            )
+            .clip(RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp))
             .background(Color(0xFFE6F7FA))
             .padding(vertical = 12.dp)
             .height(64.dp)

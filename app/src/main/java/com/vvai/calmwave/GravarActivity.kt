@@ -33,16 +33,17 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
-import androidx.core.content.ContextCompat // <-- Importação adicionada
+import androidx.core.content.ContextCompat
+import androidx.activity.enableEdgeToEdge
 
-// Novos imports para animação e desenho
+// Imports para animação e desenho
 import androidx.compose.animation.core.*
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.foundation.Canvas
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.tooling.preview.Preview
 import kotlin.math.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -105,6 +106,10 @@ class GravarActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        
+        // Define animação de entrada (deslizar da direita ao voltar de Playlists)
+        overridePendingTransition(R.anim.slide_in_right, R.anim.slide_out_left)
 
         // Solicita permissões ao abrir a tela de gravação (primeira tela do app)
         checkAndRequestPermissions()
@@ -130,8 +135,9 @@ class GravarActivity : ComponentActivity() {
                     color = Color(0xFFF7F7F7)
                 ) {
                     Box(modifier = Modifier.fillMaxSize()) {
-                        // altura aproximada da BottomNavigationBar para evitar sobreposição
-                        val bottomBarHeight = 72.dp
+                        // altura da BottomNavigationBar + padding das barras de navegação do sistema
+                        val navigationBarHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+                        val bottomBarHeight = 72.dp + navigationBarHeight
 
                         Column(
                             modifier = Modifier
@@ -141,7 +147,12 @@ class GravarActivity : ComponentActivity() {
                         ) {
                             // Header customizado com canto inferior arredondado
                             // Usando o componente TopBar reutilizável
-                            TopBar(title = "Gravação")
+                            TopBar(
+                                title = "Gravação",
+                                modifier = Modifier
+                                    .fillMaxWidth()
+
+                                )
 
                             Spacer(modifier = Modifier.height(18.dp))
 
