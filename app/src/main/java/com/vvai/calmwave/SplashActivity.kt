@@ -24,8 +24,8 @@ class SplashActivity : ComponentActivity() {
         val prefs = getSharedPreferences("calmwave_prefs", MODE_PRIVATE)
         val alreadyShown = prefs.getBoolean("splash_shown", false)
         if (alreadyShown) {
-            // skip splash and go straight to GravarActivity
-            val intent = Intent(this, GravarActivity::class.java).apply {
+            // skip splash and go straight to PrincipalActivity
+            val intent = Intent(this, PrincipalActivity::class.java).apply {
                 addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             }
             startActivity(intent)
@@ -51,8 +51,8 @@ class SplashActivity : ComponentActivity() {
                         }
                         // mark splash as shown so next app open skips it
                         prefs.edit().putBoolean("splash_shown", true).apply()
-                        // after progress completes, go to GravarActivity
-                        val intent2 = Intent(this@SplashActivity, GravarActivity::class.java).apply {
+                        // after progress completes, go to PrincipalActivity
+                        val intent2 = Intent(this@SplashActivity, PrincipalActivity::class.java).apply {
                             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                         }
                         startActivity(intent2)
