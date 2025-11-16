@@ -34,8 +34,12 @@ class AudioService {
     private var jsonWs: com.vvai.calmwave.service.WebSocketService? = null
     private var currentSessionId: String? = null
 
+    // Live buffer player para áudio processado via WS (timeshift)
+    private val liveBufferPlayer = LiveBufferPlayer(sampleRate = 16000)
+
     fun connectWebSocket(apiWsUrl: String, context: Context, onConnected: (() -> Unit)? = null, onFailure: ((Throwable) -> Unit)? = null) {
         try {
+            println("[AudioService] Connecting WS to: $apiWsUrl")
             // Prepare output file for processed audio
             val outDir = context.getExternalFilesDir(null)
             processedOutputFile = File(outDir, "processed_${System.currentTimeMillis()}.wav")
@@ -59,6 +63,7 @@ class AudioService {
                         "\"session_id\":\"${currentSessionId}\"" +
                     "}"
                     jsonWs?.sendText(startMsg)
+                    println("[AudioService] WS open. Sent start_session for $currentSessionId")
                     onConnected?.invoke()
                 }
                 override fun onTextMessage(text: String) {
@@ -72,7 +77,8 @@ class AudioService {
                                 if (!processed.isNullOrEmpty()) {
                                     val bytes = android.util.Base64.decode(processed, android.util.Base64.DEFAULT)
                                     val pcm = extractPcm(bytes)
-                                    audioTrack?.write(pcm, 0, pcm.size)
+                                    // Em vez de escrever direto, alimenta buffer ao vivo
+                                    liveBufferPlayer.appendPcm(pcm)
                                     processedOutputStream?.write(pcm)
                                     processedDataBytes += pcm.size
                                 }
@@ -84,15 +90,18 @@ class AudioService {
                 }
                 override fun onClosed(code: Int, reason: String) {
                     isWebSocketConnected = false
+                    println("[AudioService] WS closed: code=$code reason=$reason")
                 }
                 override fun onFailure(t: Throwable) {
                     isWebSocketConnected = false
+                    println("[AudioService] WS failure: ${t.message}")
                     onFailure?.invoke(t)
                 }
             }
 
             jsonWs?.connect(apiWsUrl, listener)
         } catch (e: Exception) {
+            println("[AudioService] Exception connecting WS: ${e.message}")
             onFailure?.invoke(e)
         }
     }
@@ -115,6 +124,8 @@ class AudioService {
         finalizeProcessedOutput()
         jsonWs?.close()
         currentSessionId = null
+        // Para live buffer
+        liveBufferPlayer.stop()
     }
 
     fun sendAudioChunkViaWebSocket(chunk: ByteArray) {
@@ -137,6 +148,14 @@ class AudioService {
             jsonWs?.sendText(msg.toString())
         }
     }
+
+    // ====== API PARA LIVE TIMESHFIT UI ======
+    fun getLiveBufferedMs(): Long = liveBufferPlayer.getBufferedDurationMs()
+    fun getLivePlayPositionMs(): Long = liveBufferPlayer.getPlayPositionMs()
+    fun getLiveBehindMs(): Long = liveBufferPlayer.getBehindLiveMs()
+    fun isLiveMode(): Boolean = liveBufferPlayer.isLive()
+    fun seekLiveBehind(offsetMs: Long) { liveBufferPlayer.seekBehindLive(offsetMs) }
+    fun goLive() { liveBufferPlayer.goLive() }
 
     fun sendAudioChunksPeriodically(audioFile: File, chunkDurationMs: Long = 10000L) {
         webSocketJob?.cancel()

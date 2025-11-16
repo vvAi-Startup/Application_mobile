@@ -48,6 +48,7 @@ import kotlin.math.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.yield
+import com.vvai.calmwave.ui.components.LiveSeekBar
 
 class GravarActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels {
@@ -227,6 +228,21 @@ class GravarActivity : ComponentActivity() {
                                         }
 
                                         Spacer(modifier = Modifier.height(8.dp))
+
+                                        // Barra de live (timeshift) quando houver áudio processado retornado
+                                        if (uiState.liveBufferedMs > 0L) {
+                                            LiveSeekBar(
+                                                bufferedMs = uiState.liveBufferedMs,
+                                                playPositionMs = uiState.livePlayPositionMs,
+                                                behindLiveMs = uiState.liveBehindLiveMs,
+                                                isLive = uiState.isLiveMode,
+                                                onSeekBehindLive = { offset -> viewModel.seekLiveBehind(offset) },
+                                                onGoLive = { viewModel.goLive() },
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(top = 4.dp)
+                                            )
+                                        }
                                     }
                                 }
                             }

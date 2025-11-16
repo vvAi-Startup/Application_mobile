@@ -40,7 +40,12 @@ class MainViewModel(
         val currentPlayingFile: String? = null,
         val hasActiveAudio: Boolean = false, // Para manter a barra visível mesmo quando pausado
         val isUploading: Boolean = false,
-        val uploadProgress: Int = 0 // Progresso do upload em porcentagem
+        val uploadProgress: Int = 0, // Progresso do upload em porcentagem
+        // Estado do buffer ao vivo (áudio processado retornado em tempo real)
+        val liveBufferedMs: Long = 0L,
+        val livePlayPositionMs: Long = 0L,
+        val liveBehindLiveMs: Long = 0L,
+        val isLiveMode: Boolean = true
     )
 
     // Variável para armazenar o caminho do arquivo de gravação atual
@@ -74,6 +79,7 @@ class MainViewModel(
             try {
                 // Configura conexão WebSocket e callback para envio de chunks
                 val wsUrl = Config.wsStreamUrl
+                println("[MainViewModel] WS URL: $wsUrl")
                 audioService.connectWebSocket(wsUrl, context,
                     onConnected = {
                         println("WebSocket conectado")
@@ -491,21 +497,38 @@ class MainViewModel(
                     // Determina se há áudio ativo (reproduzindo ou pausado)
                     val hasActiveAudio = currentPlayingFile != null && totalDuration > 0
 
+                    // Métricas do buffer ao vivo
+                    val liveBuffered = audioService.getLiveBufferedMs()
+                    val livePlayPos = audioService.getLivePlayPositionMs()
+                    val liveBehind = audioService.getLiveBehindMs()
+                    val liveMode = audioService.isLiveMode()
+
                     // Atualiza o estado apenas se houver uma mudança significativa
+                    // Não sobreescreve contador de gravação enquanto gravando
+                    val isRecordingNow = _uiState.value.isRecording
                     if (_uiState.value.isPlaying != isPlayingFromService ||
                         _uiState.value.totalDuration != totalDuration ||
                         _uiState.value.hasActiveAudio != hasActiveAudio ||
-                        currentPlayingFile != _uiState.value.currentPlayingFile) {
+                        currentPlayingFile != _uiState.value.currentPlayingFile ||
+                        _uiState.value.liveBufferedMs != liveBuffered ||
+                        _uiState.value.livePlayPositionMs != livePlayPos ||
+                        _uiState.value.liveBehindLiveMs != liveBehind ||
+                        _uiState.value.isLiveMode != liveMode) {
 
                         _uiState.value = _uiState.value.copy(
                             isPlaying = isPlayingFromService,
-                            currentPosition = currentPosition,
+                            // Mantém contador de gravação se está gravando
+                            currentPosition = if (isRecordingNow) _uiState.value.currentPosition else currentPosition,
                             totalDuration = totalDuration,
                             playbackProgress = if (totalDuration > 0) currentPosition.toFloat() / totalDuration.toFloat() else 0f,
                             hasActiveAudio = hasActiveAudio,
-                            currentPlayingFile = currentPlayingFile
+                            currentPlayingFile = currentPlayingFile,
+                            liveBufferedMs = liveBuffered,
+                            livePlayPositionMs = livePlayPos,
+                            liveBehindLiveMs = liveBehind,
+                            isLiveMode = liveMode
                         )
-                    } else if (isPlayingFromService && !_uiState.value.isPaused && hasActiveAudio) {
+                    } else if (isPlayingFromService && !_uiState.value.isPaused && hasActiveAudio && !isRecordingNow) {
                         // Atualiza apenas a posição durante a reprodução normal
                         // Usa tolerância maior durante operações de seek para evitar conflitos
                         val positionDifference = kotlin.math.abs(_uiState.value.currentPosition - currentPosition)
@@ -526,6 +549,12 @@ class MainViewModel(
             }
         }
     }
+
+    // ==== Controle do buffer ao vivo (áudio processado retornado) ====
+    fun seekLiveBehind(offsetMs: Long) {
+        audioService.seekLiveBehind(offsetMs)
+    }
+    fun goLive() { audioService.goLive() }
 
     // Pausa a gravação
     fun pauseRecording() {
