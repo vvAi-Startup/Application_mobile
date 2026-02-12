@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import android.util.Log
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -102,11 +103,53 @@ class MainViewModel(
                 Log.i("MainViewModel", "Streaming de denoising em tempo real ativado")
             }
 
-            // Buffer acumulador para montar segmentos de 2 s (SEGMENT_LENGTH = 32000 amostras = 64000 bytes PCM)
-            val segmentBytes = SignalProcessor.SEGMENT_LENGTH * 2  // 64000 bytes
-            var pcmAccumulator = ByteArray(0)
+            // Canal não-bloqueante: o callback enfileira dados instantaneamente,
+            // uma coroutine separada consome e processa com ONNX sem bloquear a gravação
+            val pcmChannel = Channel<ByteArray>(capacity = Channel.UNLIMITED)
 
-            // Configura o callback de chunks — cada chunk é ~1 s de PCM bruto
+            // ── Coroutine CONSUMIDORA (processa ONNX em thread separada) ──
+            val processingJob = launch(Dispatchers.Default) {
+                val segmentBytes = SignalProcessor.SEGMENT_LENGTH * 2  // 64000 bytes
+                var pcmAccumulator = ByteArray(0)
+                var segmentCount = 0
+
+                // Suspende até receber dados; sai quando o canal é fechado
+                for (data in pcmChannel) {
+                    pcmAccumulator += data
+
+                    // Processa todos os segmentos completos de 2 s acumulados
+                    while (pcmAccumulator.size >= segmentBytes && localDenoiser.isReady()) {
+                        val segmentPcm = pcmAccumulator.copyOf(segmentBytes)
+                        pcmAccumulator = pcmAccumulator.copyOfRange(segmentBytes, pcmAccumulator.size)
+
+                        segmentCount++
+                        val processedPcm = localDenoiser.processChunkPcm(segmentPcm)
+                        if (processedPcm != null) {
+                            audioService.streamProcessedChunk(processedPcm)
+                            Log.d("MainViewModel", "Segmento $segmentCount: ${processedPcm.size} bytes processados e tocados")
+                        }
+                    }
+                }
+
+                // Canal fechado — processa resíduo acumulado (último segmento < 2 s)
+                if (pcmAccumulator.isNotEmpty() && localDenoiser.isReady()) {
+                    val actualSamples = pcmAccumulator.size / 2
+                    val paddedPcm = if (pcmAccumulator.size < segmentBytes) {
+                        pcmAccumulator + ByteArray(segmentBytes - pcmAccumulator.size)
+                    } else {
+                        pcmAccumulator
+                    }
+                    segmentCount++
+                    val processedPcm = localDenoiser.processChunkPcm(paddedPcm, actualSamples)
+                    if (processedPcm != null) {
+                        audioService.streamProcessedChunk(processedPcm)
+                        Log.d("MainViewModel", "Segmento final $segmentCount: ${processedPcm.size} bytes (resíduo)")
+                    }
+                }
+                Log.i("MainViewModel", "Processamento concluído: $segmentCount segmentos totais")
+            }
+
+            // ── Callback PRODUTOR (executa na thread de gravação — NÃO bloqueia) ──
             wavRecorder.setChunkCallback { chunkData, chunkIndex, overlapSize ->
                 // Remove o overlap (já pertence ao chunk anterior)
                 val newData = if (overlapSize > 0 && chunkData.size > overlapSize) {
@@ -114,20 +157,9 @@ class MainViewModel(
                 } else {
                     chunkData
                 }
-
-                pcmAccumulator += newData
-
-                // Quando acumular ≥ 2 s, processa o segmento
-                while (pcmAccumulator.size >= segmentBytes && localDenoiser.isReady()) {
-                    val segmentPcm = pcmAccumulator.copyOf(segmentBytes)
-                    pcmAccumulator = pcmAccumulator.copyOfRange(segmentBytes, pcmAccumulator.size)
-
-                    val processedPcm = localDenoiser.processChunkPcm(segmentPcm)
-                    if (processedPcm != null) {
-                        audioService.streamProcessedChunk(processedPcm)
-                        Log.d("MainViewModel", "Chunk ${chunkIndex}: ${processedPcm.size} bytes processados e tocados")
-                    }
-                }
+                // Enfileira instantaneamente — nunca bloqueia a thread de gravação
+                pcmChannel.trySend(newData)
+                Log.d("MainViewModel", "Chunk $chunkIndex enfileirado: ${newData.size} bytes")
             }
 
             try {
@@ -143,20 +175,10 @@ class MainViewModel(
                 )
                 audioService.stopBluetoothSco()
             } finally {
-                // Processa resíduo acumulado (último segmento < 2 s)
-                if (pcmAccumulator.isNotEmpty() && localDenoiser.isReady()) {
-                    val actualSamples = pcmAccumulator.size / 2
-                    // Pad para segmentBytes (o modelo espera tamanho fixo)
-                    val paddedPcm = if (pcmAccumulator.size < segmentBytes) {
-                        pcmAccumulator + ByteArray(segmentBytes - pcmAccumulator.size)
-                    } else {
-                        pcmAccumulator
-                    }
-                    val processedPcm = localDenoiser.processChunkPcm(paddedPcm, actualSamples)
-                    if (processedPcm != null) {
-                        audioService.streamProcessedChunk(processedPcm)
-                    }
-                }
+                // Fecha o canal — sinaliza à coroutine consumidora que não há mais dados
+                pcmChannel.close()
+                // Aguarda a consumidora terminar de processar todos os segmentos restantes
+                processingJob.join()
 
                 // Limpa o callback
                 wavRecorder.setChunkCallback { _, _, _ -> }
