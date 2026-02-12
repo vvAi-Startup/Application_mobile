@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import android.util.Log
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,6 +24,9 @@ class MainViewModel(
     
     // Serviço de upload
     private val uploadService = AudioUploadService()
+
+    // Processador local de denoising (offline)
+    private val localDenoiser = LocalAudioDenoiser(context)
 
     // Definição do Estado da UI
     private val _uiState = MutableStateFlow(UiState())
@@ -45,6 +50,8 @@ class MainViewModel(
 
     // Variável para armazenar o caminho do arquivo de gravação atual
     private var currentRecordingPath: String? = null
+    // Sinaliza quando a gravação terminou por completo (arquivo WAV com header atualizado)
+    private var recordingDone = CompletableDeferred<Unit>()
     private var onProcessedAudioSaved: ((File) -> Unit)? = null
 
     fun setProcessedAudioSaveCallback(callback: (File) -> Unit) {
@@ -55,70 +62,79 @@ class MainViewModel(
     init {
         // Inicializa o AudioService com o contexto da aplicação
         audioService.init(context.applicationContext)
+        // Inicializa o modelo de denoising local (ONNX) em background
+        viewModelScope.launch(Dispatchers.IO) {
+            val loaded = localDenoiser.initialize()
+            if (loaded) {
+                Log.i("MainViewModel", "✅ Modelo de denoising local carregado com sucesso")
+            } else {
+                Log.e("MainViewModel", "❌ Modelo de denoising local INDISPONÍVEL — áudio não será processado")
+            }
+        }
         // Inicia um loop de atualização de reprodução
         startPlaybackMonitor()
     }
 
-    // Funções de Gravação e Processamento
+    override fun onCleared() {
+        super.onCleared()
+        localDenoiser.release()
+    }
+
+    // Funções de Gravação e Processamento (modo offline com streaming em tempo real)
     fun startRecording(filePath: String) {
+        // Guarda o caminho ANTES de suspender, para que stopRecordingAndProcess o veja
+        currentRecordingPath = filePath
+        recordingDone = CompletableDeferred()
+
         viewModelScope.launch(Dispatchers.IO) {
             _uiState.value = _uiState.value.copy(
                 isRecording = true,
-                statusText = "Iniciando gravação...",
+                statusText = "Gravando...",
                 isPlaying = false
             )
-            
+
             // Para qualquer reprodução anterior
             audioService.stopPlayback()
 
-            try {
-                // Configura conexão WebSocket e callback para envio de chunks
-                val wsUrl = Config.wsStreamUrl
-                audioService.connectWebSocket(wsUrl, context,
-                    onConnected = {
-                        println("WebSocket conectado")
-                    },
-                    onFailure = { e ->
-                        println("Falha no WebSocket: ${e.message}")
-                    }
-                )
-                
-                wavRecorder.setChunkCallback { chunkData, chunkIndex, overlapSize ->
-                    viewModelScope.launch {
-                        println("MainViewModel: Recebendo chunk $chunkIndex do WavRecorder (${chunkData.size} bytes, overlap: $overlapSize)")
-                        
-                        // Remove o overlap para evitar duplicidade audível na reprodução
-                        val dataToProcess = if (chunkIndex > 0 && overlapSize > 0) {
-                            // Remove a porção de overlap do início da chunk (o áudio duplicado)
-                            chunkData.copyOfRange(overlapSize, chunkData.size)
-                        } else {
-                            // Primeira chunk não tem overlap a ser removido
-                            chunkData
-                        }
-                        
-                        println("MainViewModel: Dados após remoção do overlap: ${dataToProcess.size} bytes")
-                        
-                        // Atualiza o status para mostrar que está enviando chunk
-                        _uiState.value = _uiState.value.copy(
-                            statusText = "Enviando chunk ${chunkIndex + 1} via WebSocket..."
-                        )
-                        
-                        // Envia o chunk completo (COM overlap) para o backend para processamento robusto
-                        audioService.sendAudioChunkViaWebSocket(chunkData)
-                        
-                        // Atualiza o status de volta para gravação
-                        _uiState.value = _uiState.value.copy(
-                            statusText = "Gravando... (próximo chunk em 1s)"
-                        )
+            // Inicializa o streaming de áudio processado (AudioTrack + arquivo de saída)
+            if (localDenoiser.isReady()) {
+                audioService.initStreamingPlayback(context)
+                Log.i("MainViewModel", "Streaming de denoising em tempo real ativado")
+            }
+
+            // Buffer acumulador para montar segmentos de 2 s (SEGMENT_LENGTH = 32000 amostras = 64000 bytes PCM)
+            val segmentBytes = SignalProcessor.SEGMENT_LENGTH * 2  // 64000 bytes
+            var pcmAccumulator = ByteArray(0)
+
+            // Configura o callback de chunks — cada chunk é ~1 s de PCM bruto
+            wavRecorder.setChunkCallback { chunkData, chunkIndex, overlapSize ->
+                // Remove o overlap (já pertence ao chunk anterior)
+                val newData = if (overlapSize > 0 && chunkData.size > overlapSize) {
+                    chunkData.copyOfRange(overlapSize, chunkData.size)
+                } else {
+                    chunkData
+                }
+
+                pcmAccumulator += newData
+
+                // Quando acumular ≥ 2 s, processa o segmento
+                while (pcmAccumulator.size >= segmentBytes && localDenoiser.isReady()) {
+                    val segmentPcm = pcmAccumulator.copyOf(segmentBytes)
+                    pcmAccumulator = pcmAccumulator.copyOfRange(segmentBytes, pcmAccumulator.size)
+
+                    val processedPcm = localDenoiser.processChunkPcm(segmentPcm)
+                    if (processedPcm != null) {
+                        audioService.streamProcessedChunk(processedPcm)
+                        Log.d("MainViewModel", "Chunk ${chunkIndex}: ${processedPcm.size} bytes processados e tocados")
                     }
                 }
-                
-                // Inicia o bluetooth SCO e a gravação
+            }
+
+            try {
+                // Gravação offline — sem WebSocket
                 audioService.startBluetoothSco()
+                // startRecording suspende até isRecording = false (arquivo WAV finalizado)
                 wavRecorder.startRecording(filePath)
-                currentRecordingPath = filePath
-                
-                _uiState.value = _uiState.value.copy(statusText = "Gravando... (primeiro chunk será enviado em 1s)")
             } catch (e: Exception) {
                 e.printStackTrace()
                 _uiState.value = _uiState.value.copy(
@@ -126,6 +142,27 @@ class MainViewModel(
                     statusText = "Erro ao iniciar gravação: ${e.message}"
                 )
                 audioService.stopBluetoothSco()
+            } finally {
+                // Processa resíduo acumulado (último segmento < 2 s)
+                if (pcmAccumulator.isNotEmpty() && localDenoiser.isReady()) {
+                    val actualSamples = pcmAccumulator.size / 2
+                    // Pad para segmentBytes (o modelo espera tamanho fixo)
+                    val paddedPcm = if (pcmAccumulator.size < segmentBytes) {
+                        pcmAccumulator + ByteArray(segmentBytes - pcmAccumulator.size)
+                    } else {
+                        pcmAccumulator
+                    }
+                    val processedPcm = localDenoiser.processChunkPcm(paddedPcm, actualSamples)
+                    if (processedPcm != null) {
+                        audioService.streamProcessedChunk(processedPcm)
+                    }
+                }
+
+                // Limpa o callback
+                wavRecorder.setChunkCallback { _, _, _ -> }
+
+                // Sinaliza que o arquivo WAV está completo (header atualizado)
+                recordingDone.complete(Unit)
             }
         }
     }
@@ -135,60 +172,32 @@ class MainViewModel(
             _uiState.value = _uiState.value.copy(
                 isRecording = false,
                 isProcessing = true,
-                statusText = "Parando gravação e processando...",
-                currentPosition = 0 // Resetar contador ao encerrar
+                statusText = "Finalizando processamento...",
+                currentPosition = 0
             )
             try {
                 wavRecorder.stopRecording()
                 audioService.stopBluetoothSco()
-                // Desconecta WS e finaliza arquivo processado
-                audioService.disconnectWebSocket()
 
-                val audioFile = currentRecordingPath?.let { File(it) }
-                if (audioFile?.exists() == true) {
-                    // Verifica se há um arquivo processado para salvar
-                    val processedFilePath = saveProcessedAudio()
-                    val fileToTranscribe: File
-                    val audioSource: String
-                    
-                    if (processedFilePath != null) {
-                        val processedFile = File(processedFilePath)
-                        // Chama o callback para salvar automaticamente no Downloads
-                        onProcessedAudioSaved?.invoke(processedFile)
-                        fileToTranscribe = processedFile
-                        audioSource = "processado"
-                        println("📁 Usando arquivo processado para transcrição: ${processedFile.absolutePath}")
-                    } else {
-                        // Fallback: usa o arquivo original da gravação
-                        fileToTranscribe = audioFile
-                        audioSource = "original"
-                        println("📁 Arquivo processado indisponível, usando arquivo original: ${audioFile.absolutePath}")
-                    }
-                    
+                // Aguarda a coroutine de gravação finalizar (flush + header WAV + último chunk)
+                recordingDone.await()
+
+                // Finaliza o streaming e obtém o caminho do arquivo processado
+                val processedPath = audioService.stopStreamingPlayback()
+
+                if (processedPath != null) {
+                    val processedFile = File(processedPath)
+                    onProcessedAudioSaved?.invoke(processedFile)
                     _uiState.value = _uiState.value.copy(
-                        statusText = "Áudio salvo! Testando conectividade..."
+                        statusText = "✅ Áudio processado com IA local!"
                     )
-                    
-                    // Testa conectividade antes de tentar transcrição
-                    val isEndpointAvailable = uploadService.testTranscriptionEndpoint(apiEndpoint)
-                    if (!isEndpointAvailable) {
-                        _uiState.value = _uiState.value.copy(
-                            statusText = "⚠️ Servidor de transcrição indisponível. Áudio salvo localmente."
-                        )
-                        return@launch
-                    }
-                    
+                    Log.i("MainViewModel", "✅ Denoising streaming concluído: $processedPath")
+                } else if (currentRecordingPath != null) {
+                    // Fallback: nenhum processamento ocorreu (modelo não carregou)
                     _uiState.value = _uiState.value.copy(
-                        statusText = "Servidor OK! Iniciando transcrição ($audioSource)..."
+                        statusText = "⚠️ Modelo IA indisponível. Áudio original salvo."
                     )
-                    
-                    // Inicia a transcrição do arquivo (processado ou original)
-                    uploadProcessedAudio(fileToTranscribe, apiEndpoint)
-                    
-                } else {
-                    _uiState.value = _uiState.value.copy(
-                        statusText = "Erro: Arquivo não encontrado para processamento."
-                    )
+                    Log.w("MainViewModel", "Streaming não produziu saída — modelo indisponível?")
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -199,8 +208,6 @@ class MainViewModel(
                 _uiState.value = _uiState.value.copy(
                     isProcessing = false
                 )
-                // Recarrega a lista de arquivos após o processamento
-                // A MainActivity irá recarregar automaticamente via seu callback
             }
         }
     }

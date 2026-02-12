@@ -31,11 +31,15 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Headset
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.ui.platform.LocalContext
+import android.Manifest
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.IntentFilter
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.core.content.ContextCompat
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -71,10 +75,15 @@ fun PrincipalScreen(modifier: Modifier = Modifier) {
 
     fun loadPairedDevices() {
         pairedDevices.clear()
-        val adapter = BluetoothAdapter.getDefaultAdapter()
-        adapter?.bondedDevices?.forEach { d ->
-            pairedDevices.add((d.name ?: "Desconhecido") + " - " + d.address)
-        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED
+        ) return
+        try {
+            val adapter = BluetoothAdapter.getDefaultAdapter()
+            adapter?.bondedDevices?.forEach { d ->
+                pairedDevices.add((d.name ?: "Desconhecido") + " - " + d.address)
+            }
+        } catch (_: SecurityException) { /* permission not granted */ }
     }
 
     fun loadPlaylists() {
@@ -106,16 +115,7 @@ fun PrincipalScreen(modifier: Modifier = Modifier) {
             if (event == Lifecycle.Event.ON_RESUME) {
                 loadPlaylists()
                 loadPairedDevices()
-                // also check basic connection state
-                val adapter = BluetoothAdapter.getDefaultAdapter()
-                // if any ACL connected devices, consider headphones connected
-                val connected = try {
-                    adapter?.bondedDevices?.any { device ->
-                        // best-effort: check if device is connected by attempting getName (not reliable)
-                        false
-                    } ?: false
-                } catch (_: Exception) { false }
-                // keep existing foneConnected state if system broadcasts will update it
+                // keep existing foneConnected state — system broadcasts will update it
             }
         }
         // register system receiver for headset (wired) and bluetooth ACL connect/disconnect

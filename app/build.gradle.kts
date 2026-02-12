@@ -54,6 +54,10 @@ android {
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.15"
     }
+    // Não comprimir arquivos do modelo ONNX
+    aaptOptions {
+        noCompress("onnx")
+    }
 }
 
 dependencies {
@@ -73,6 +77,8 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     // Accompanist System UI Controller para controlar status bar
     implementation("com.google.accompanist:accompanist-systemuicontroller:0.34.0")
+    // ONNX Runtime para inferência local do modelo de denoising
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.18.0")
     // ExoPlayer Media3 (versão mais recente recomendada)
     implementation("androidx.media3:media3-exoplayer:1.8.0")
     implementation("androidx.media3:media3-ui:1.8.0")
