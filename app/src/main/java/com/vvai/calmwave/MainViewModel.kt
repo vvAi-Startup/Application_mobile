@@ -105,7 +105,8 @@ class MainViewModel(
 
             // Canal não-bloqueante: o callback enfileira dados instantaneamente,
             // uma coroutine separada consome e processa com ONNX sem bloquear a gravação
-            val pcmChannel = Channel<ByteArray>(capacity = Channel.UNLIMITED)
+            // Capacidade otimizada para buffering adequado
+            val pcmChannel = Channel<ByteArray>(capacity = 32)
 
             // ── Coroutine CONSUMIDORA (processa ONNX em thread separada) ──
             val processingJob = launch(Dispatchers.Default) {
@@ -126,6 +127,8 @@ class MainViewModel(
                         val processedPcm = localDenoiser.processChunkPcm(segmentPcm)
                         if (processedPcm != null) {
                             audioService.streamProcessedChunk(processedPcm)
+                            // Pequeno delay para sincronização e prevenção de buffer underrun
+                            delay(10)
                             Log.d("MainViewModel", "Segmento $segmentCount: ${processedPcm.size} bytes processados e tocados")
                         }
                     }
@@ -143,6 +146,7 @@ class MainViewModel(
                     val processedPcm = localDenoiser.processChunkPcm(paddedPcm, actualSamples)
                     if (processedPcm != null) {
                         audioService.streamProcessedChunk(processedPcm)
+                        delay(10)
                         Log.d("MainViewModel", "Segmento final $segmentCount: ${processedPcm.size} bytes (resíduo)")
                     }
                 }

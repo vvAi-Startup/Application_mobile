@@ -227,12 +227,14 @@ class AudioService {
         stopStreamingPlayback()
 
         val bufferSize = AudioTrack.getMinBufferSize(sampleRate, channelConfig, audioFormat)
+        // Aumenta buffer para 4x o mínimo para evitar underruns e picotamento
+        val optimizedBufferSize = (bufferSize * 4).coerceAtLeast(32768)
         streamingTrack = AudioTrack(
             AudioManager.STREAM_MUSIC,
             sampleRate,
             channelConfig,
             audioFormat,
-            bufferSize.coerceAtLeast(16384),
+            optimizedBufferSize,
             MODE_STREAM
         )
         if (streamingTrack?.state != AudioTrack.STATE_INITIALIZED) {
