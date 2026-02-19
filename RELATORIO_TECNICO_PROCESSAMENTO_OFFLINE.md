@@ -1,42 +1,69 @@
-# Relatório Técnico: Processamento Offline com IA Local
+# Como o CalmWave Limpa Áudio Sem Internet
 
 **Data:** 12 de Fevereiro de 2026  
 **Aplicação:** CalmWave Android
 
 ---
 
-## 🎯 Objetivo
+## 🎯 O que queríamos fazer
 
-Implementar processamento de áudio offline no Android com remoção de ruído por IA, eliminando dependência de servidor backend.
+Fazer o aplicativo limpar ruídos dos áudios **sem precisar de internet**, usando inteligência artificial que funciona direto no celular.
 
-## ✅ Resultado
+## ✅ O que conseguimos
 
-Sistema 100% offline com latência de ~200ms, processando áudio em tempo real durante a gravação.
+O sistema funciona **100% offline**, limpando o áudio em cerca de 0,2 segundos por segundo de gravação (em tempo quase real).
 
 ---
 
-## 📦 Tecnologias Utilizadas
+## 🛠️ Ferramentas que usamos
 
-### 1. **ONNX Runtime Android (v1.18.0)**
-- **Para:** Executar modelo UNet de denoising localmente no dispositivo
-- **Funcionalidade:** Inferência de IA sem servidor, processa espectrograma de áudio
-- **Input:** Espectrograma log-magnitude [1, 1, 257, 251]
-- **Output:** Máscara de denoising [1, 1, 257, 251]
+### 1. ONNX Runtime Android (versão 1.18.0)
 
-### 2. **Kotlin Coroutines**
-- **Para:** Pipeline assíncrono producer-consumer entre captura e processamento
-- **Funcionalidade:** Gravação não bloqueia processamento IA, threads separadas
-- **Channel:** Buffer de 32 chunks para backpressure automático
+**O que é:** Um motor que roda modelos de inteligência artificial no celular
 
-### 3. **Android AudioTrack**
-- **Para:** Reprodução em tempo real do áudio processado
-- **Funcionalidade:** Streaming simultâneo durante gravação com buffer otimizado (4x)
-- **Config:** 16kHz mono, PCM 16-bit, buffer 32KB-128KB
+**O que faz:** 
+- Executa o modelo de limpeza de áudio localmente
+- Não precisa de servidor
+- Processa o espectrograma (representação visual) do áudio
 
-### 4. **FFT/STFT Manual (Kotlin)**
-- **Para:** Transformação de áudio em espectrograma e reconstrução
-- **Funcionalidade:** Compatibilidade 100% com PyTorch (torch.stft/istft)
-- **Algoritmo:** Cooley-Tukey radix-2 in-place
+**Como funciona:**
+- **Entrada:** Espectrograma do áudio com ruído [1, 1, 257, 251]
+- **Saída:** Máscara que indica o que é ruído [1, 1, 257, 251]
+
+### 2. Coroutines do Kotlin
+
+**O que é:** Sistema para fazer várias coisas ao mesmo tempo sem travar o app
+
+**O que faz:**
+- Permite gravar E limpar ao mesmo tempo
+- Cada tarefa roda em sua própria "pista"
+- Um buffer (fila) de 32 pedaços garante que nada se perca
+
+### 3. AudioTrack do Android
+
+**O que é:** Sistema nativo do Android para tocar som
+
+**O que faz:**
+- Toca o áudio limpo em tempo real
+- Funciona enquanto você ainda está gravando
+- Buffer otimizado (4x o tamanho mínimo) evita falhas
+
+**Configuração:**
+- 16kHz (frequência de amostragem)
+- Mono (um canal)
+- PCM 16-bit (formato de áudio)
+- Buffer: 32KB até 128KB
+
+### 4. FFT/STFT Manual (escrito em Kotlin)
+
+**O que é:** Algoritmos matemáticos para transformar áudio
+
+**O que faz:**
+- Converte áudio em imagem (espectrograma)
+- Funciona exatamente como o PyTorch
+- Permite que a IA "veja" o áudio
+
+**Algoritmo usado:** Cooley-Tukey radix-2 (muito eficiente)
 
 ---
 

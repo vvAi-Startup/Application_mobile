@@ -1,10 +1,10 @@
-# 🌊 CalmWave - Aplicativo Android de Gravação e Processamento de Áudio
+# 🌊 CalmWave - Aplicativo Android para Gravação e Melhoramento de Áudio
 
 <div align="center">
 
 ![CalmWave Logo](app/src/main/res/drawable/splash.png)
 
-**Aplicativo Android nativo para gravação, processamento em tempo real e transcrição de áudios com interface amigável**
+**Grave, limpe e transcreva áudios diretamente no seu celular Android com interface simples e amigável**
 
 [![Android](https://img.shields.io/badge/Android-24%2B-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://www.android.com/)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.0.21-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white)](https://kotlinlang.org/)
@@ -15,475 +15,464 @@
 
 ---
 
-## 📋 Índice
+## 📋 O que você encontrará neste documento
 
-- [Sobre o Projeto](#-sobre-o-projeto)
-- [Funcionalidades](#-funcionalidades)
-- [Tecnologias Utilizadas](#-tecnologias-utilizadas)
-- [Pré-requisitos](#-pré-requisitos)
-- [Instalação](#-instalação)
-- [Configuração](#-configuração)
-- [Uso](#-uso)
-- [Arquitetura](#-arquitetura)
-- [Documentação](#-documentação)
-- [Roadmap](#-roadmap)
-- [Contribuição](#-contribuição)
-- [Licença](#-licença)
-- [Contato](#-contato)
+- [O que é o CalmWave](#-o-que-é-o-calmwave)
+- [O que o aplicativo faz](#-o-que-o-aplicativo-faz)
+- [Ferramentas e tecnologias usadas](#-ferramentas-e-tecnologias-usadas)
+- [Requisitos para usar](#-requisitos-para-usar)
+- [Como instalar](#-como-instalar)
+- [Como configurar](#-como-configurar)
+- [Como usar o aplicativo](#-como-usar-o-aplicativo)
+- [Como o aplicativo funciona](#-como-o-aplicativo-funciona)
+- [Onde encontrar mais informações](#-onde-encontrar-mais-informações)
+- [Próximos passos](#-próximos-passos)
+- [Licença e contato](#-licença-e-contato)
 
 ---
 
-## 🎯 Sobre o Projeto
+## 🎯 O que é o CalmWave
 
-**CalmWave** é um aplicativo Android desenvolvido pela **vvAi Startup** que oferece uma solução completa para gravação, processamento e transcrição de áudios. Com foco em experiência infantil amigável e tecnologia de ponta, o app utiliza streaming em tempo real via WebSocket e transcrição inteligente com OpenAI Whisper.
+O **CalmWave** é um aplicativo para celulares Android criado pela **vvAi Startup** que permite:
 
-### ✨ Destaques
+- **Gravar áudios** com qualidade profissional
+- **Limpar ruídos** dos áudios automaticamente (como barulho de fundo, ventilador, etc.)
+- **Organizar** seus áudios em pastas personalizadas
+- **Ouvir** os áudios com controles avançados
 
-- 🎙️ **Gravação de Alta Qualidade** - WAV 16kHz mono 16-bit
-- 🌐 **Processamento em Tempo Real** - Streaming via WebSocket
-- 🤖 **Transcrição Inteligente** - OpenAI Whisper (Faster-Whisper)
-- 📱 **Interface Moderna** - Jetpack Compose + Material Design 3
-- 🎵 **Player Avançado** - ExoPlayer com controle de velocidade
-- 📂 **Sistema de Playlists** - Organização personalizada
-- 🎨 **Design Infantil** - Interface colorida e animações suaves
+O aplicativo foi desenvolvido pensando em ser simples e fácil de usar, com uma interface colorida e agradável.
 
----
+### ✨ Por que usar o CalmWave?
 
-## 🚀 Funcionalidades
-
-### Gravação de Áudio
-- ✅ Gravação em formato WAV de alta qualidade
-- ✅ Visualização de waveform animada em tempo real
-- ✅ Pausar e retomar durante a gravação
-- ✅ Contador de tempo preciso
-- ✅ Suporte a dispositivos Bluetooth (Bluetooth SCO)
-- ✅ Chunking automático com overlap para streaming
-
-### Processamento em Tempo Real
-- ✅ Streaming de áudio via WebSocket
-- ✅ Processamento por chunks de 1 segundo
-- ✅ Reprodução simultânea do áudio processado
-- ✅ Salvamento automático de áudios originais e processados
-- ✅ Sistema de sessões para múltiplas gravações
-
-### Transcrição de Áudio
-- ✅ Transcrição automática usando OpenAI Whisper
-- ✅ Suporte a 99+ idiomas
-- ✅ Detecção automática de idioma
-- ✅ Progresso de upload em tempo real
-- ✅ Múltiplos tamanhos de modelo (tiny, base, small, medium, large)
-- ✅ Funciona offline (servidor local)
-
-### Gerenciamento de Áudios
-- ✅ Sistema de playlists personalizáveis
-- ✅ Cores customizadas para cada playlist
-- ✅ Sistema de favoritos
-- ✅ Busca e filtros avançados
-- ✅ Organização por data e tipo
-- ✅ Identificação de áudios originais vs processados
-
-### Player de Áudio
-- ✅ ExoPlayer integrado
-- ✅ Controle de velocidade (0.5x - 1.5x)
-- ✅ Barra de progresso interativa com seek
-- ✅ Controles de anterior/próximo
-- ✅ Timer de posição e duração
-- ✅ Player modal com interface intuitiva
-
-### Interface
-- ✅ Design moderno com Jetpack Compose
-- ✅ Material Design 3
-- ✅ Animações suaves entre telas
-- ✅ Waveform animada durante gravação
-- ✅ Tema infantil amigável
-- ✅ Navegação inferior intuitiva
+- 🎙️ **Gravação Crystal Clear** - Áudio limpo sem ruídos indesejados
+- 🌐 **Funciona Offline** - Não precisa de internet para limpar o áudio
+- 📱 **Interface Amigável** - Fácil de usar para todas as idades
+- 🎵 **Controle Total** - Ajuste a velocidade de reprodução, pule trechos e mais
+- 📂 **Organização Simples** - Crie pastas para organizar seus áudios
+- 🎨 **Visual Bonito** - Design moderno com cores e animações suaves
 
 ---
 
-## 🛠️ Tecnologias Utilizadas
+## 🚀 O que o aplicativo faz
 
-### Core
-- **[Kotlin](https://kotlinlang.org/)** `2.0.21` - Linguagem de programação
-- **[Android SDK](https://developer.android.com/)** `API 24-36` - Plataforma Android
-- **[Jetpack Compose](https://developer.android.com/jetpack/compose)** - UI declarativa moderna
-- **[Material Design 3](https://m3.material.io/)** - Design system
+### 1. 🎙️ Gravar Áudio com Qualidade
 
-### Bibliotecas Principais
-- **[ExoPlayer (Media3)](https://exoplayer.dev/)** `1.8.0` - Player de áudio avançado
-- **[OkHttp](https://square.github.io/okhttp/)** `4.12.0` - Cliente HTTP/WebSocket
-- **[Kotlin Coroutines](https://kotlinlang.org/docs/coroutines-overview.html)** `1.7.3` - Programação assíncrona
-- **[Accompanist System UI Controller](https://google.github.io/accompanist/)** `0.34.0` - Controle de UI do sistema
+O CalmWave permite que você grave áudios com qualidade profissional diretamente no seu celular:
 
-### APIs Externas
-- **OpenAI Whisper (Faster-Whisper)** - Transcrição de áudio
-- **WebSocket Server** - Streaming em tempo real
+- **Gravação de alta qualidade** - O áudio fica nítido e claro
+- **Visualização em tempo real** - Veja as ondas sonoras enquanto grava
+- **Pausar e continuar** - Pause a gravação quando precisar e retome depois
+- **Contador de tempo** - Saiba exatamente quanto tempo você está gravando
+- **Funciona com Bluetooth** - Use fones ou microfones Bluetooth
+- **Processamento automático** - O áudio é limpo automaticamente enquanto você grava
 
-### Ferramentas de Build
-- **Gradle** `8.8.0` (Kotlin DSL)
-- **Android Gradle Plugin** `8.8.0`
-- **Java** `11` (compatibility)
+### 2. 🌊 Limpar Ruídos do Áudio
+
+Um dos grandes diferenciais do CalmWave é a limpeza automática de ruídos:
+
+- **Remove barulho de fundo** - Elimina sons indesejados como ventilador, ar-condicionado, trânsito
+- **Funciona durante a gravação** - Você já escuta o áudio limpo enquanto grava
+- **Funciona sem internet** - Todo o processamento acontece no seu celular
+- **Salva duas versões** - Guarda tanto o áudio original quanto o limpo
+- **Resultado em tempo real** - Você pode ouvir o resultado imediatamente
+
+### 3. 📝 Transformar Áudio em Texto
+
+O aplicativo pode transcrever (escrever) o que foi falado no áudio:
+
+- **Transcrição automática** - Usa inteligência artificial para converter fala em texto
+- **Múltiplos idiomas** - Funciona com mais de 99 idiomas diferentes
+- **Detecta o idioma sozinho** - Identifica automaticamente qual língua está sendo falada
+- **Mostra o progresso** - Você acompanha quanto falta para terminar
+- **Várias opções de qualidade** - Escolha entre velocidade ou precisão
+
+### 4. 📂 Organizar seus Áudios
+
+Mantenha tudo organizado de forma simples:
+
+- **Crie pastas** - Organize seus áudios em categorias (ex: Trabalho, Família, Estudos)
+- **Escolha cores** - Cada pasta pode ter uma cor diferente
+- **Marque favoritos** - Destaque os áudios mais importantes
+- **Busque facilmente** - Encontre rapidamente o áudio que precisa
+- **Filtre por tipo** - Veja apenas originais ou apenas processados
+- **Veja a data** - Saiba quando cada áudio foi criado
+
+### 5. 🎵 Ouvir seus Áudios
+
+Controle total na hora de ouvir:
+
+- **Ajuste a velocidade** - Ouça mais rápido (até 1.5x) ou mais devagar (0.5x)
+- **Navegue no áudio** - Pule para qualquer parte tocando na barra
+- **Pule para o próximo/anterior** - Navegue entre seus áudios facilmente
+- **Veja quanto falta** - Acompanhe o tempo total e quanto já ouviu
+- **Interface bonita** - Controles grandes e fáceis de usar
+
+### 6. 🎨 Interface Amigável
+
+Tudo pensado para facilitar seu uso:
+
+- **Design moderno** - Visual limpo e agradável
+- **Animações suaves** - Transições bonitas entre telas
+- **Cores alegres** - Interface colorida e convidativa
+- **Fácil navegação** - Menu na parte de baixo da tela
+- **Ícones claros** - Tudo identificado de forma visual
 
 ---
 
-## 📦 Pré-requisitos
+## 🛠️ Ferramentas e tecnologias usadas
 
-### Para Desenvolvimento
-- **Android Studio** Hedgehog (2023.1.1) ou superior
-- **JDK** 11 ou superior
-- **Android SDK** API 24-36
-- **Git** para controle de versão
+### Para quem quer saber o que tem "por trás"
 
-### Para Execução
-- **Dispositivo Android** com API 24+ (Android 7.0 Nougat ou superior)
-- **Permissões**:
-  - Microfone (gravação)
-  - Armazenamento (salvar arquivos)
-  - Internet (comunicação com servidor)
-  - Bluetooth (opcional, para dispositivos externos)
+O CalmWave foi construído usando tecnologias modernas e confiáveis. Aqui está uma explicação simples do que cada uma faz:
 
-### Servidor Backend (Requerido)
-- Servidor com API de transcrição Whisper
-- Servidor WebSocket para streaming
-- Endpoints configurados (ver [Configuração](#-configuração))
+#### 📱 Plataforma e Linguagem
+- **Android** - Sistema operacional dos celulares (versão 7.0 ou mais recente)
+- **Kotlin** - Linguagem de programação moderna e segura, recomendada pelo Google para apps Android
+
+#### 🎨 Interface Visual
+- **Jetpack Compose** - Ferramenta para criar telas bonitas e interativas
+- **Material Design 3** - Guia de design do Google para interfaces modernas e consistentes
+
+#### 🔊 Áudio e Reprodução
+- **ExoPlayer** - Sistema profissional de reprodução de áudio do Google
+- **AudioTrack** - Tecnologia nativa do Android para tocar som em tempo real
+- **WavRecorder** - Nosso próprio sistema de gravação em alta qualidade
+
+#### 🤖 Inteligência Artificial
+- **ONNX Runtime** - Motor que executa a IA de limpeza de ruído no celular
+- **UNet Denoiser** - Modelo de IA especializado em remover ruídos
+
+#### 🌐 Comunicação (quando necessário)
+- **OkHttp** - Sistema para comunicação com servidores quando necessário
+- **WebSocket** - Tecnologia para enviar e receber dados em tempo real
 
 ---
 
-## 💻 Instalação
+## 📦 Requisitos para usar
 
-### 1. Clone o Repositório
+### O que você precisa
+
+#### Para usar o aplicativo:
+- **Um celular Android** funcionando com Android 7.0 ou mais novo (a maioria dos celulares atuais)
+- **Permissões** que o app vai pedir:
+  - Acesso ao **microfone** (para gravar)
+  - Acesso ao **armazenamento** (para salvar os áudios)
+  - Acesso à **internet** (apenas para transcrever - opcional)
+  - Acesso ao **Bluetooth** (apenas se você usar fones Bluetooth - opcional)
+
+#### Para desenvolvedores (programadores):
+Se você é desenvolvedor e quer trabalhar no código do aplicativo, vai precisar de:
+- **Android Studio** (programa para criar apps Android) versão Hedgehog ou mais recente
+- **JDK 11** ou mais recente (Kit de ferramentas Java)
+- **Git** (sistema de controle de versões)
+
+---
+
+## 💻 Como instalar
+
+### Para desenvolvedores (se você vai mexer no código)
+
+#### Passo 1: Baixar o código
+
+No computador, abra o terminal e digite:
 
 ```bash
 git clone https://github.com/vvAi-Startup/Application_mobile.git
 cd Application_mobile
 ```
 
-### 2. Configure Variáveis de Ambiente (Opcional)
+Isso vai baixar todos os arquivos do projeto para o seu computador.
+
+#### Passo 2: Configurar o servidor (opcional)
+
+Se você tiver um servidor próprio para transcrição, pode configurar aqui. Se não tiver, o aplicativo funciona normalmente sem isso:
 
 ```bash
 export API_BASE_URL="http://seu-servidor:5000"
 export WS_BASE_URL="ws://seu-servidor:5000"
-export DB_BASE_URL="http://seu-servidor:5000"
 ```
 
-Ou edite diretamente em `app/build.gradle.kts`:
+Ou edite no arquivo de configuração em `app/build.gradle.kts`.
 
-```kotlin
-defaultConfig {
-    val apiBaseUrl = "http://10.67.57.104:5000"
-    buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
-}
-```
+#### Passo 3: Abrir no Android Studio
 
-### 3. Sincronize o Projeto
+1. Abra o **Android Studio**
+2. Clique em **File > Open**
+3. Selecione a pasta do projeto
+4. Aguarde o Android Studio preparar tudo (pode demorar alguns minutos na primeira vez)
 
-Abra o projeto no Android Studio e aguarde a sincronização automática do Gradle.
+#### Passo 4: Instalar no celular
 
-### 4. Build do Projeto
+**Opção 1 - Pelo Android Studio:**
+1. Conecte seu celular no computador via USB
+2. Ative o "Modo Desenvolvedor" no celular
+3. Clique no botão verde de "Play" no Android Studio
 
-#### Via Android Studio
-- Clique em **Build > Make Project** (Ctrl+F9)
-
-#### Via Terminal
+**Opção 2 - Pela linha de comando:**
 ```bash
 ./gradlew build
-```
-
-### 5. Executar no Dispositivo/Emulador
-
-#### Via Android Studio
-- Clique em **Run > Run 'app'** (Shift+F10)
-
-#### Via Terminal
-```bash
 ./gradlew installDebug
 ```
 
 ---
 
-## ⚙️ Configuração
+## ⚙️ Como configurar
 
-### URLs do Servidor
+### Configurações do servidor (apenas para desenvolvedores)
 
-O app utiliza as seguintes URLs por padrão:
+O aplicativo pode se conectar a um servidor para fazer a transcrição de áudios. Se você não tiver um servidor, não se preocupe - o aplicativo funciona normalmente sem ele!
 
-```kotlin
-// REST API
-API_BASE_URL = "http://10.67.57.104:5000"
+**Endereço padrão do servidor:**
+- Servidor principal: `http://10.67.57.104:5000`
+- Para transcrição: `http://10.67.57.104:5000/api/v1/audio/transcricao`
+- Para limpeza em tempo real: `ws://10.67.57.104:5000/api/v1/streaming/ws/audio-streaming`
 
-// Endpoints
-/api/v1/audio/transcricao  // Transcrição Whisper
-/health                     // Health check
+**Como mudar o servidor:**
 
-// WebSocket
-WS_BASE_URL = "ws://10.67.57.104:5000"
-
-// Endpoint WebSocket
-/api/v1/streaming/ws/audio-streaming
-```
-
-### Configurar Servidor Customizado
-
-Edite `app/src/main/java/com/vvai/calmwave/Config.kt`:
+Se você tem seu próprio servidor, edite o arquivo `app/src/main/java/com/vvai/calmwave/Config.kt` e mude os endereços:
 
 ```kotlin
 object Config {
+    // Coloque o endereço do seu servidor aqui
     val apiBaseUrl: String get() = "http://seu-servidor:porta"
     val wsBaseUrl: String get() = "ws://seu-servidor:porta"
-    
-    val transcriptionUrl: String get() = "$apiBaseUrl/api/v1/audio/transcricao"
-    val wsStreamUrl: String get() = "$wsBaseUrl/api/v1/streaming/ws/audio-streaming"
 }
 ```
 
-### Permissões do Android
+### Permissões que o aplicativo precisa
 
-O app solicita as seguintes permissões automaticamente:
+Quando você instalar o aplicativo, ele vai pedir algumas permissões. Aqui está o que cada uma faz:
 
-```xml
-<uses-permission android:name="android.permission.RECORD_AUDIO" />
-<uses-permission android:name="android.permission.INTERNET" />
-<uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
-<uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
-<uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
-```
+- **🎙️ Microfone** - Para gravar os áudios
+- **📁 Armazenamento** - Para salvar os áudios no celular
+- **🌐 Internet** - Para enviar áudios para transcrição (apenas se você quiser usar essa função)
+- **🎧 Bluetooth** - Para usar fones ou microfones Bluetooth (opcional)
 
----
-
-## 📱 Uso
-
-### Iniciar o App
-
-1. **Splash Screen**: Aparece apenas na primeira execução
-2. **Tela de Gravação**: Tela inicial principal
-
-### Gravar Áudio
-
-1. Toque no botão **"Iniciar"**
-2. Fale no microfone (visualize a waveform animada)
-3. Toque em **"Pausar"** para pausar temporariamente (opcional)
-4. Toque em **"Encerrar"** para finalizar
-5. O áudio será processado e salvo automaticamente
-
-### Gerenciar Playlists
-
-1. Navegue para a aba **"Playlists"**
-2. Toque no botão **"+"** para criar uma nova playlist
-3. Escolha um nome e cor
-4. Organize seus áudios arrastando para playlists
-
-### Reproduzir Áudios
-
-1. Vá para a aba **"Áudios"**
-2. Toque em um áudio da lista
-3. Use os controles:
-   - **Play/Pause**: Reproduzir ou pausar
-   - **Seek Bar**: Navegar no áudio
-   - **Velocidade**: Ajustar de 0.5x a 1.5x
-   - **Anterior/Próximo**: Navegar entre áudios
-
-### Buscar e Filtrar
-
-1. Use a caixa de busca no topo
-2. Toque no ícone de filtro **"≡"**
-3. Selecione:
-   - **Apenas favoritos**
-   - **Playlist específica**
-4. Aplique os filtros
+Todas essas permissões são solicitadas automaticamente quando você abre o app pela primeira vez.
 
 ---
 
-## 🏗️ Arquitetura
+## 📱 Como usar o aplicativo
 
-### Padrão MVVM (Model-View-ViewModel)
+### Primeira vez que você abrir
+
+1. Uma tela de abertura bonita vai aparecer (isso só acontece na primeira vez)
+2. Depois, você vai direto para a tela de gravação
+
+### Como gravar um áudio
+
+1. **Toque no botão "Iniciar"** (é o grande no meio da tela)
+2. **Fale no microfone** - Você verá ondas coloridas se mexendo conforme você fala
+3. **Se precisar pausar**: Toque em "Pausar" e depois em "Continuar" quando quiser voltar
+4. **Quando terminar**: Toque em "Encerrar"
+5. **Pronto!** O aplicativo vai:
+   - Limpar os ruídos automaticamente
+   - Salvar o áudio original
+   - Salvar o áudio limpo
+   - Você pode ouvir os dois depois
+
+### Como organizar seus áudios em pastas
+
+1. Vá até a aba **"Pastas"** (na parte de baixo da tela)
+2. Toque no botão **"+"** para criar uma nova pasta
+3. Escolha um nome para a pasta (ex: "Reuniões", "Família", "Estudos")
+4. Escolha uma cor para ela
+5. Arraste seus áudios para as pastas
+
+### Como ouvir um áudio
+
+1. Vá na aba **"Áudios"**
+2. Toque no áudio que quer ouvir
+3. Uma tela com controles vai abrir:
+   - **Botão Play/Pause** ▶️⏸️ - Para tocar ou pausar
+   - **Barra de progresso** - Arraste para pular partes do áudio
+   - **Velocidade** 🐌 🐰 - Toque para ouvir mais devagar ou mais rápido
+   - **Setas** ⏮️ ⏭️ - Para ir para o áudio anterior ou próximo
+
+### Como encontrar um áudio específico
+
+1. Use a **caixinha de busca** no topo da tela
+2. Digite o nome do áudio
+3. Ou toque no **ícone de filtro** (três linhas) para:
+   - Ver apenas seus favoritos ⭐
+   - Ver apenas áudios de uma pasta específica
+   - Ver apenas áudios originais ou limpos
+
+---
+
+## � Como o aplicativo funciona
+
+### Uma explicação simples da estrutura
+
+O CalmWave é organizado em "camadas", como um bolo de três andares. Cada camada tem sua função:
 
 ```
-┌─────────────────┐
-│   View (UI)     │  ← Jetpack Compose Activities
-│  GravarActivity │
-│  PlaylistActivity
-└────────┬────────┘
+┌───────────────────┐
+│  TELAS (o que     │  ← O que você vê e toca
+│  você vê)         │     (botões, cores, animações)
+└────────┬──────────┘
+         │
          │
          ▼
-┌─────────────────┐
-│   ViewModel     │  ← MainViewModel (State Management)
-└────────┬────────┘
+┌────────┴──────────┐
+│  LÓGICA           │  ← O "cérebro" que decide
+│  (análise e       │     o que fazer quando você
+│   decisões)       │     toca em algo
+└────────┬──────────┘
+         │
          │
          ▼
-┌─────────────────┐
-│     Model       │  ← AudioService, WavRecorder, Services
-└─────────────────┘
+┌────────┴──────────┐
+│  AÇÕES            │  ← Faz as coisas acontecerem
+│  (gravar, tocar,  │     (acessa microfone, salva
+│   salvar, limpar) │     arquivos, limpa ruído)
+└───────────────────┘
 ```
 
-### Componentes Principais
+### Como funciona quando você grava:
 
-- **MainActivity**: Tela de debug e testes
-- **GravarActivity**: Interface de gravação com waveform
-- **PlaylistActivity**: Gerenciamento de playlists e áudios
-- **SplashActivity**: Tela inicial do app
-- **MainViewModel**: Lógica de negócio e gerenciamento de estado
-- **AudioService**: Reprodução, WebSocket e Bluetooth
-- **WavRecorder**: Gravação de áudio WAV
-- **AudioUploadService**: Upload e transcrição
-- **WebSocketService**: Cliente WebSocket
-- **ExoPlayerAudioPlayer**: Player de áudio avançado
+1. **Você toca em "Iniciar"** → A tela avisa a Lógica
+2. **Lógica decide o que fazer** → Pede para começar a gravação
+3. **Ações entram em jogo** → Liga o microfone e começa a gravar
+4. **Enquanto você fala** → O áudio é limpo em tempo real
+5. **Você toca em "Encerrar"** → Tudo é salvo no celular
+6. **Tela é atualizada** → Mostra que terminou
 
-### Fluxo de Dados
+### Componentes principais (peças do aplicativo):
 
-```
-User Input → Activity → ViewModel → Service → API/WebSocket
-              ↑                                      ↓
-              └────────── State Update ──────────────┘
-```
+- **Telas**:
+  - Tela de Gravação - Onde você grava áudios
+  - Tela de Pastas - Onde organiza seus áudios
+  - Tela de Reprodução - Onde ouve os áudios
+  - Tela de Abertura - Primeira tela quando abre o app
+
+- **Lógica Central (MainViewModel)**:
+  - Gerencia tudo que acontece no app
+  - Guarda informações (quais áudios existem, qual está tocando, etc.)
+  - Coordena as ações
+
+- **Sistemas de Ação**:
+  - **AudioService** - Cuida de tocar áudios e limpar ruídos
+  - **WavRecorder** - Responsável por gravar
+  - **LocalAudioDenoiser** - Limpa os ruídos usando IA
+  - **ExoPlayerAudioPlayer** - Toca os áudios com qualidade
 
 ---
 
-## 📚 Documentação
+## 📚 Onde encontrar mais informações
 
-### Documentos Disponíveis
+### Documentos disponíveis
 
-- **[DOCUMENTACAO_COMPLETA.md](DOCUMENTACAO_COMPLETA.md)** - Documentação completa para devs e usuários
-- **[ARQUITETURA_TECNICA.md](ARQUITETURA_TECNICA.md)** - Arquitetura detalhada com diagramas
-- **[IMPLEMENTACAO_AUDIOS_PROCESSADOS.md](IMPLEMENTACAO_AUDIOS_PROCESSADOS.md)** - Feature de áudios processados
+Se você quiser entender mais sobre como o CalmWave funciona, temos vários documentos:
 
-### Tópicos Cobertos
+- **[DOCUMENTACAO_COMPLETA.md](DOCUMENTACAO_COMPLETA.md)** 
+  - Explicação completa de tudo no aplicativo
+  - Ótimo para quem quer entender todos os detalhes
 
-- ✅ Guia de setup e instalação
-- ✅ Arquitetura MVVM detalhada
-- ✅ Fluxos de dados (Gravação, Transcrição, Reprodução)
-- ✅ Padrões de design utilizados
-- ✅ APIs e integrações
-- ✅ Performance e otimizações
-- ✅ Segurança e boas práticas
-- ✅ 15+ melhorias sugeridas
+- **[ARQUITETURA_TECNICA.md](ARQUITETURA_TECNICA.md)** 
+  - Como o aplicativo foi construído
+  - Mostra a estrutura e organização do código
 
----
+- **[IMPLEMENTACAO_AUDIOS_PROCESSADOS.md](IMPLEMENTACAO_AUDIOS_PROCESSADOS.md)** 
+  - Como funciona o sistema de limpar ruídos
+  - Explica como salvamos as duas versões do áudio
 
-## 🗺️ Roadmap
+- **[RELATORIO_TECNICO_PROCESSAMENTO_OFFLINE.md](RELATORIO_TECNICO_PROCESSAMENTO_OFFLINE.md)** 
+  - Como o aplicativo limpa áudio sem internet
+  - Detalhes sobre a inteligência artificial usada
 
 ### Versão Atual: 1.0.0 ✅
 
-- ✅ Gravação de áudio WAV
-- ✅ Streaming WebSocket em tempo real
-- ✅ Transcrição via Whisper
-- ✅ Sistema de playlists
-- ✅ Player com controle de velocidade
-- ✅ Interface Jetpack Compose
+O que já funciona agora:
+- ✅ Gravar áudios com qualidade
+- ✅ Limpar ruídos automaticamente (com e sem internet)
+- ✅ Organizar em pastas
+- ✅ Ouvir com controles avançados
+- ✅ Interface bonita e fácil de usar
 
-### Próximas Versões 🔜
 
-#### v1.1.0 - Autenticação e Cloud
-- 🔜 Sistema de login/cadastro
-- 🔜 Sincronização na nuvem
-- 🔜 Backup automático
-- 🔜 Perfis de usuário
 
-#### v1.2.0 - Modo Offline
-- 🔜 Funcionar sem conexão
-- 🔜 Queue de upload automática
-- 🔜 Cache inteligente
+### ⚠️ Aviso Importante
 
-#### v1.3.0 - Editor de Áudio
-- 🔜 Cortar início/fim
-- 🔜 Ajustar volume
-- 🔜 Aplicar fade in/out
-- 🔜 Remover ruído
+Este projeto pertence exclusivamente à **vvAi Startup**. Pessoas de fora da empresa não podem contribuir no momento.
 
-#### v1.4.0 - Compartilhamento
-- 🔜 Compartilhar áudios
-- 🔜 Exportar em MP3/AAC
-- 🔜 Integração com redes sociais
+### Se você faz parte da equipe vvAi
 
-#### v2.0.0 - Features Avançadas
-- 🔜 Controle por voz
-- 🔜 Widgets do Android
-- 🔜 Android Auto
-- 🔜 Modo criança
+Se você trabalha na vvAi e vai mexer no código, siga estas regras:
+
+1. **NUNCA** adicione código direto na branch principal (`main`)
+2. **Sempre crie uma branch** (ramificação) separada para cada nova funcionalidade:
+   ```bash
+   git checkout -b feature/nome-da-sua-funcionalidade
+   ```
+   
+3. **Salve suas mudanças** com mensagens claras:
+   ```bash
+   git commit -m "feat: adiciona função de [descreva o que foi feito]"
+   ```
+   
+4. **Envie para o repositório**:
+   ```bash
+   git push origin feature/nome-da-sua-funcionalidade
+   ```
+   
+5. **Peça revisão** - Abra um Pull Request para que outros membros da equipe revisem seu código
+
+### Padrões de código
+
+Para manter o código limpo e organizado:
+
+- Escreva nomes de variáveis e funções em português
+- Use nomes que explicam o que fazem (ex: `gravarAudio`, `limparRuido`)
+- Adicione comentários explicando partes mais complexas
+- Faça commits pequenos e específicos (uma mudança de cada vez)
 
 ---
 
-## 🤝 Contribuição
+## 📄 Licença e Propriedade
 
-### ⚠️ Projeto Proprietário
+### Copyright © 2025 vvAi Startup
 
-Este projeto é **propriedade exclusiva da vvAi Startup**. Contribuições externas não são aceitas no momento.
+**Este projeto é propriedade privada da vvAi Startup.**
 
-### Para Membros da Equipe vvAi
+### O que isso significa?
 
-1. **Nunca** faça commit diretamente na `main`
-2. Crie uma branch para sua feature:
-   ```bash
-   git checkout -b feature/minha-feature
-   ```
-3. Commit suas mudanças:
-   ```bash
-   git commit -m "feat: adiciona minha feature"
-   ```
-4. Push para o repositório:
-   ```bash
-   git push origin feature/minha-feature
-   ```
-5. Abra um Pull Request para revisão
+Significa que SOMENTE a vvAi Startup tem direitos sobre este aplicativo. 
 
-### Code Style
-
-- Siga os padrões Kotlin oficiais
-- Use nomes descritivos em português
-- Documente funções complexas
-- Mantenha commits atômicos e descritivos
-
----
-
-## 📄 Licença
-
-**Copyright © 2025 vvAi Startup. Todos os direitos reservados.**
-
-Este projeto é **propriedade privada e confidencial** da vvAi Startup. 
-
-**É ESTRITAMENTE PROIBIDO**:
+**Você NÃO PODE**:
 - ❌ Usar este código fora da vvAi Startup
-- ❌ Copiar, modificar ou distribuir este software
-- ❌ Criar trabalhos derivados
-- ❌ Usar para fins comerciais ou pessoais
-- ❌ Fazer engenharia reversa
+- ❌ Copiar o código para usar em outros projetos
+- ❌ Modificar e distribuir
+- ❌ Criar versões derivadas
+- ❌ Usar para ganhar dinheiro fora da empresa
+- ❌ Tentar descobrir como funciona para copiar (engenharia reversa)
 
-Para mais detalhes, consulte o arquivo [LICENSE.md](LICENSE.md).
+**Você PODE** (se for da equipe):
+- ✅ Trabalhar no código se você for membro autorizado da equipe vvAi Startup
 
-### Uso Autorizado
-
-✅ Apenas membros autorizados da equipe vvAi Startup podem acessar e modificar este código.
-
----
-
-## 📞 Contato
-
-### vvAi Startup
-
-- **Website**: [www.vvai.com.br](https://www.vvai.com.br)
-- **Email**: contato@vvai.com.br
-- **GitHub**: [@vvAi-Startup](https://github.com/vvAi-Startup)
-
-### Suporte Técnico
-
-Para questões técnicas, entre em contato com a equipe de desenvolvimento:
-- **Email de Suporte**: dev@vvai.com.br
-- **Issues**: [GitHub Issues](https://github.com/vvAi-Startup/Application_mobile/issues) (apenas para membros da equipe)
+Para mais detalhes legais, veja o arquivo [LICENSE.md](LICENSE.md).
 
 ---
+
 
 ## 🙏 Agradecimentos
 
-Desenvolvido com ❤️ pela equipe **vvAi Startup**
+Feito com muito ❤️ e dedicação pela equipe **vvAi Startup**
 
-### Equipe de Desenvolvimento
-- Equipe vvAi Startup
+### Nossa Equipe
 
-### Tecnologias Open Source Utilizadas
-- [Kotlin](https://kotlinlang.org/)
-- [Android](https://www.android.com/)
-- [Jetpack Compose](https://developer.android.com/jetpack/compose)
-- [ExoPlayer](https://exoplayer.dev/)
-- [OkHttp](https://square.github.io/okhttp/)
-- [OpenAI Whisper](https://github.com/openai/whisper)
+Desenvolvido pela talentosa equipe vvAi Startup, que trabalhou duro para criar um aplicativo útil e fácil de usar.
+
+### Ferramentas que Utilizamos
+
+Agradecemos às tecnologias de código aberto (gratuitas e criadas por comunidades) que nos ajudaram a construir o CalmWave:
+
+- **[Kotlin](https://kotlinlang.org/)** - A linguagem de programação que usamos
+- **[Android](https://www.android.com/)** - Sistema operacional do Google
+- **[Jetpack Compose](https://developer.android.com/jetpack/compose)** - Ferramenta do Google para criar telas bonitas
+- **[ExoPlayer](https://exoplayer.dev/)** - Sistema de reprodução de áudio do Google
+- **[OkHttp](https://square.github.io/okhttp/)** - Sistema para comunicação com servidores
+- **[OpenAI Whisper](https://github.com/openai/whisper)** - Inteligência artificial para transcrição
 
 ---
 
@@ -491,6 +480,6 @@ Desenvolvido com ❤️ pela equipe **vvAi Startup**
 
 **CalmWave** - Transformando áudio em experiência
 
-© 2025 vvAi Startup. Todos os direitos reservados.
+Versão 1.0.0 | © 2025 vvAi Startup | Todos os direitos reservados
 
 </div>

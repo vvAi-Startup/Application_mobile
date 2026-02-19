@@ -1,27 +1,31 @@
-# 🏛️ CalmWave - Arquitetura Técnica
+# 🏛️ CalmWave - Como o Aplicativo Foi Construído
 
-## 📋 Índice
+## 📋 O que você vai aprender aqui
 
-1. [Visão Geral da Arquitetura](#visão-geral-da-arquitetura)
-2. [Diagrama de Componentes](#diagrama-de-componentes)
-3. [Fluxos de Dados](#fluxos-de-dados)
-4. [Padrões de Design](#padrões-de-design)
-5. [Tecnologias por Camada](#tecnologias-por-camada)
-6. [Decisões Arquiteturais](#decisões-arquiteturais)
-7. [Performance e Otimizações](#performance-e-otimizações)
-8. [Segurança](#segurança)
+1. [Visão geral da estrutura](#visão-geral-da-estrutura)
+2. [Diagrama das peças do aplicativo](#diagrama-das-peças-do-aplicativo)
+3. [Como os dados fluem](#como-os-dados-fluem)
+4. [Padrões usados](#padrões-usados)
+5. [Tecnologias em cada camada](#tecnologias-em-cada-camada)
+6. [Decisões importantes que tomamos](#decisões-importantes-que-tomamos)
+7. [Como fizemos para ser rápido](#como-fizemos-para-ser-rápido)
+8. [Como protegemos seus dados](#como-protegemos-seus-dados)
 
 ---
 
-## 🏗️ Visão Geral da Arquitetura
+## 🏗️ Visão geral da estrutura
 
-### Arquitetura em Camadas
+### O aplicativo é organizado em camadas (como um bolo)
+
+Imagine que o CalmWave é um prédio de vários andares. Cada andar tem uma função específica:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                     PRESENTATION LAYER                       │
+│                  ANDAR 1: APRESENTAÇÃO                       │
+│            (O que você vê e toca na tela)                   │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │  GravarUI    │  │  PlaylistUI  │  │  PlayerUI    │      │
+│  │  Tela de     │  │  Tela de     │  │  Tela do     │      │
+│  │  Gravação    │  │  Pastas      │  │  Player      │      │
 │  │  (Compose)   │  │  (Compose)   │  │  (Compose)   │      │
 │  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘      │
 │         │                  │                  │              │
@@ -29,47 +33,49 @@
           │                  │                  │
           ▼                  ▼                  ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                      VIEWMODEL LAYER                         │
+│                  ANDAR 2: GERENCIAMENTO                      │
+│            (O "Cérebro" que coordena tudo)                  │
 │  ┌─────────────────────────────────────────────────────┐    │
 │  │              MainViewModel                          │    │
-│  │  • State Management (StateFlow)                     │    │
-│  │  • Business Logic Coordination                      │    │
-│  │  • Lifecycle Awareness                              │    │
+│  │  • Guarda informações importantes                   │    │
+│  │  • Sabe se está gravando ou não                     │    │
+│  │  • Controla o que aparece na tela                   │    │
 │  └─────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────┘
           │
           ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                       DOMAIN LAYER                           │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │  AudioUseCase│  │ PlaylistUse  │  │ TranscriptUse│      │
-│  │              │  │    Case      │  │    Case      │      │
-│  └──────────────┘  └──────────────┘  └──────────────┘      │
-└─────────────────────────────────────────────────────────────┘
-          │
-          ▼
-┌─────────────────────────────────────────────────────────────┐
-│                        DATA LAYER                            │
+│                  ANDAR 3: AÇÃO                               │
+│            (Os "trabalhadores" que fazem acontecer)         │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
 │  │ AudioService │  │ WavRecorder  │  │ ExoPlayer    │      │
 │  │              │  │              │  │   Player     │      │
 │  └──────┬───────┘  └──────┬───────┘  └──────────────┘      │
 │         │                  │                                 │
 │  ┌──────┴──────────────────┴────┐  ┌──────────────┐        │
-│  │   AudioUploadService          │  │ WebSocket    │        │
-│  │   (Network)                   │  │   Service    │        │
+│  │   Serviço de Upload           │  │ Serviço      │        │
+│  │   (Envia para internet)       │  │ WebSocket    │        │
 │  └───────────────────────────────┘  └──────────────┘        │
 └─────────────────────────────────────────────────────────────┘
           │                              │
           ▼                              ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                      EXTERNAL LAYER                          │
+│                  ANDAR 4: EXTERNO                            │
+│            (Coisas fora do aplicativo)                      │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │  REST API    │  │  WebSocket   │  │  Local       │      │
-│  │  (Whisper)   │  │  Streaming   │  │  Storage     │      │
+│  │  Servidor    │  │  Sistema de  │  │  Arquivos    │      │
+│  │  Whisper     │  │  Limpeza     │  │  do Celular  │      │
 │  └──────────────┘  └──────────────┘  └──────────────┘      │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+### Por que essa organização?
+
+**Vantagens:**
+- 🔧 **Fácil de manter** - Se algo quebra, sabemos onde procurar
+- 🧪 **Fácil de testar** - Podemos testar cada andar separadamente
+- 📈 **Fácil de crescer** - Adicionar funcionalidades novas é simples
+- 🎯 **Responsabilidades claras** - Cada peça tem uma função específica
 
 ---
 
@@ -131,167 +137,138 @@
 
 ---
 
-## 🔄 Fluxos de Dados
+## 🔄 Como os dados fluem
 
-### 1. Fluxo de Gravação
+### 1. O que acontece quando você grava um áudio
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    GRAVAÇÃO DE ÁUDIO                         │
-└─────────────────────────────────────────────────────────────┘
+Imagine a gravação como uma linha de produção numa fábrica. Cada etapa acontece em sequência:
 
-User Action: "Iniciar Gravação"
-    │
-    ▼
-┌─────────────────────────────────────┐
-│  GravarActivity.onClick             │
-│  • Gera nome do arquivo             │
-│  • Chama viewModel.startRecording() │
-└─────────────────┬───────────────────┘
-                  │
-                  ▼
-┌─────────────────────────────────────────────────────┐
-│  MainViewModel.startRecording(filePath)             │
-│  • Atualiza UiState (isRecording = true)           │
-│  • Conecta WebSocket                                │
-│  • Configura chunk callback                        │
-│  • Inicia Bluetooth SCO                             │
-│  • Chama wavRecorder.startRecording()              │
-└─────────────────┬───────────────────────────────────┘
-                  │
-                  ▼
-┌─────────────────────────────────────────────────────┐
-│  WavRecorder.startRecording(filePath)               │
-│  • Inicializa AudioRecord                           │
-│  • Escreve header WAV no arquivo                    │
-│  • Loop: Lê buffer → Escreve arquivo                │
-│  • A cada 1s: Acumula chunk com overlap             │
-└─────────────────┬───────────────────────────────────┘
-                  │
-                  ▼ (a cada 1 segundo)
-┌─────────────────────────────────────────────────────┐
-│  WavRecorder.chunkCallback(chunk, index, overlap)   │
-│  • Invoca callback registrado pelo ViewModel        │
-└─────────────────┬───────────────────────────────────┘
-                  │
-                  ▼
-┌─────────────────────────────────────────────────────┐
-│  MainViewModel callback                             │
-│  • Remove overlap para evitar duplicação audível    │
-│  • Atualiza statusText ("Enviando chunk N...")      │
-│  • Chama audioService.sendAudioChunkViaWebSocket()  │
-└─────────────────┬───────────────────────────────────┘
-                  │
-                  ▼
-┌─────────────────────────────────────────────────────┐
-│  AudioService.sendAudioChunkViaWebSocket(chunk)     │
-│  • Cria header WAV para o chunk                     │
-│  • Base64 encode do áudio completo                  │
-│  • Monta JSON message:                              │
-│    {                                                │
-│      "type": "audio_chunk",                         │
-│      "session_id": "uuid",                          │
-│      "audio_data": "base64...",                     │
-│      "sample_rate": 16000,                          │
-│      ...                                            │
-│    }                                                │
-│  • Envia via WebSocket                              │
-└─────────────────┬───────────────────────────────────┘
-                  │
-                  ▼
-┌─────────────────────────────────────────────────────┐
-│  WebSocket Server (Backend)                         │
-│  • Recebe chunk                                     │
-│  • Processa áudio                                   │
-│  • Retorna áudio processado:                        │
-│    {                                                │
-│      "type": "audio_processed",                     │
-│      "processed_audio_data": "base64..."            │
-│    }                                                │
-└─────────────────┬───────────────────────────────────┘
-                  │
-                  ▼
-┌─────────────────────────────────────────────────────┐
-│  AudioService.onTextMessage(message)                │
-│  • Parse JSON                                       │
-│  • Base64 decode do áudio processado                │
-│  • Extrai PCM do WAV                                │
-│  • Escreve no AudioTrack (reprodução)               │
-│  • Salva em arquivo processado temporário           │
-└─────────────────────────────────────────────────────┘
-
-Loop continua até "Encerrar Gravação"
-
-User Action: "Encerrar Gravação"
-    │
-    ▼
-┌─────────────────────────────────────────────────────┐
-│  MainViewModel.stopRecordingAndProcess()            │
-│  • Atualiza UiState (isRecording = false)          │
-│  • Para WavRecorder                                 │
-│  • Desconecta WebSocket                             │
-│  • Finaliza arquivo processado                      │
-│  • Salva arquivo processado no Downloads           │
-│  • (Opcional) Inicia transcrição                    │
-└─────────────────────────────────────────────────────┘
-```
-
-### 2. Fluxo de Transcrição
+**PASSO A PASSO:**
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                   TRANSCRIÇÃO DE ÁUDIO                       │
-└─────────────────────────────────────────────────────────────┘
+VOS VOCÊ TOCA EM "INICIAR" 👆
+          │
+          ▼
+1️⃣ TELA DE GRAVAÇÃO recebe o toque
+   - Avisa o "Cérebro" (MainViewModel)
+   - Pede para começar a gravação
+          │
+          ▼
+2️⃣ CÉREBRO (MainViewModel) organiza tudo
+   - Cria um nome para o arquivo
+   - Prepara a conexão (se for usar internet)
+   - Ativa o gravador
+          │
+          ▼
+3️⃣ GRAVADOR (WavRecorder) entra em ação
+   - Liga o microfone do celular
+   - Começa a capturar o som
+   - A cada 1 segundo, pega um "pedacinho" do áudio
+          │
+          ▼
+4️⃣ LIMPEZA (LocalAudioDenoiser) trabalha
+   - Recebe os "pedacinhos" de áudio
+   - Usa inteligência artificial para identificar ruídos
+   - Remove o ruído, mantém apenas a voz
+   - Demora cerca de 0.2 segundos por pedacinho
+          │
+          ▼
+5️⃣ REPRODUÇÃO (AudioService) toca o áudio limpo
+   - Recebe o áudio já limpo
+   - Toca no alto-falante para você ouvir
+   - Salva numa pasta temporária
+          │
+          ▼
+6️⃣ SALVAMENTO final
+   - Quando você toca "Encerrar"
+   - Salva DOIS arquivos:
+     * Áudio original (com ruídos)
+     * Áudio limpo (sem ruídos)
+   - Ambos ficam na pasta Downloads
+          │
+          ▼
+✅ PRONTO! Você pode ouvir qualquer um dos dois
+```
 
-Após gravação ou seleção manual de arquivo
-    │
-    ▼
-┌─────────────────────────────────────────────────────┐
-│  MainViewModel.stopRecordingAndProcess()            │
-│  • Obtém arquivo processado (ou original)           │
-│  • Testa conectividade com servidor                 │
-│  • Se OK: chama uploadProcessedAudio()              │
-└─────────────────┬───────────────────────────────────┘
-                  │
-                  ▼
-┌─────────────────────────────────────────────────────┐
-│  MainViewModel.uploadProcessedAudio(file, url)      │
-│  • Atualiza UiState (isUploading = true)           │
-│  • Configura callback de progresso                  │
-│  • Chama uploadService.transcribeAudio()            │
-└─────────────────┬───────────────────────────────────┘
-                  │
-                  ▼
-┌─────────────────────────────────────────────────────┐
-│  AudioUploadService.transcribeAudio(file)           │
-│  • Chama uploadProcessedAudio() com params padrão   │
-└─────────────────┬───────────────────────────────────┘
-                  │
-                  ▼
-┌─────────────────────────────────────────────────────┐
-│  AudioUploadService.uploadProcessedAudio()          │
-│  • Cria MultipartBody com arquivo                   │
-│  • Adiciona parâmetros:                             │
-│    - language: "pt"                                 │
-│    - model_size: "medium"                           │
-│    - high_quality: true                             │
-│  • Envia POST para /api/v1/audio/transcricao       │
-└─────────────────┬───────────────────────────────────┘
-                  │
-                  ▼ (durante upload)
-┌─────────────────────────────────────────────────────┐
-│  ProgressRequestBody.write()                        │
-│  • A cada chunk enviado:                            │
-│    onProgress(bytesUploaded, totalBytes)            │
-└─────────────────┬───────────────────────────────────┘
-                  │
-                  ▼
-┌─────────────────────────────────────────────────────┐
-│  MainViewModel onProgress callback                  │
-│  • Calcula porcentagem                              │
-│  • Atualiza UiState (uploadProgress)                │
-│  • Atualiza statusText:                             │
-│    - "Enviando áudio: N%"                           │
+**Linha do tempo:**
+- ⏱️ Gravação: Tempo real (enquanto você fala)
+- ⏱️ Limpeza: 0.2 segundos por segundo de áudio
+- ⏱️ Reprodução: Quase instantânea
+- ⏱️ Salvamento: 1-2 segundos
+
+---
+
+### 2. O que acontece quando você transcreve (transforma fala em texto)
+
+A transcrição é opcional e precisa de internet:
+
+**PASSO A PASSO:**
+
+```
+VOCÊ ESCOLHE UM ÁUDIO E PEDE TRANSCRIÇÃO 📝
+          │
+          ▼
+1️⃣ CÉREBRO verifica se tem internet
+   - Se não tiver → Mostra erro
+   - Se tiver → Continua
+          │
+          ▼
+2️⃣ PREPARAÇÃO do arquivo
+   - Pega o áudio que você escolheu
+   - Prepara para enviar
+   - Mostra "Enviando: 0%"
+          │
+          ▼
+3️⃣ ENVIO para o servidor
+   - Envia o arquivo pela internet
+   - Vai mostrando o progresso: 10%, 20%, 30%...
+   - Você vê na tela quanto falta
+          │
+          ▼
+4️⃣ SERVIDOR PROCESSA (Whisper AI)
+   - Recebe o áudio
+   - A IA "escuta" e escreve o que ouviu
+   - Detecta automaticamente o idioma
+   - Pode demorar de 10 segundos a 2 minutos
+          │
+          ▼
+5️⃣ RESULTADO volta para você
+   - Servidor envia o texto escrito
+   - Aplicativo recebe e mostra
+   - Você pode copiar ou salvar
+          │
+          ▼
+✅ TEXTO PRONTO! Sua fala virou escrita
+```
+
+**Parâmetros da transcrição:**
+- 🌍 **Idioma**: Português (mas detecta automaticamente)
+- 🎯 **Qualidade**: Média (boa precisão, velocidade ok)
+- 🔊 **Tipo**: Alta qualidade habilitada
+
+---
+
+### 3. O que acontece quando você ouve um áudio
+
+Muito mais simples:
+
+```
+VOCÊ TOCA NUM ÁUDIO DA LISTA 🎵
+          │
+          ▼
+1️⃣ CÉREBRO identifica qual áudio você escolheu
+          │
+          ▼
+2️⃣ PLAYER (ExoPlayer) carrega o arquivo
+          │
+          ▼
+3️⃣ REPRODUÇÃO começa
+   - Você vê a barra de progresso se enchendo
+   - Pode pausar, pular, mudar velocidade
+          │
+          ▼
+✅ ÁUDIO TOCANDO! Você ouve seu áudio
+```
 │    - "Processando transcrição: N%"                  │
 │    - "Finalizando transcrição: N%"                  │
 └─────────────────────────────────────────────────────┘

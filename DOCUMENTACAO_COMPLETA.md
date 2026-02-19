@@ -1,153 +1,199 @@
-# 📱 CalmWave - Documentação Completa
+# 📱 CalmWave - Documentação Completa e Acessível
 
-## 📋 Índice
+## 📋 O que você pode aprender aqui
 
-1. [Visão Geral](#visão-geral)
-2. [Arquitetura do Projeto](#arquitetura-do-projeto)
-3. [Tecnologias Utilizadas](#tecnologias-utilizadas)
-4. [Estrutura de Diretórios](#estrutura-de-diretórios)
-5. [Componentes Principais](#componentes-principais)
-6. [Guia para Desenvolvedores](#guia-para-desenvolvedores)
-7. [Guia para Usuários](#guia-para-usuários)
-8. [Funcionalidades Implementadas](#funcionalidades-implementadas)
-9. [Melhorias Sugeridas](#melhorias-sugeridas)
-10. [APIs e Integrações](#apis-e-integrações)
-11. [Configuração e Build](#configuração-e-build)
-
----
-
-## 🎯 Visão Geral
-
-**CalmWave** é um aplicativo Android nativo para gravação, processamento e reprodução de áudios, com foco em experiência infantil amigável e processamento em tempo real via WebSocket.
-
-### Características Principais
-
-- ✅ Gravação de áudio em tempo real (WAV 16kHz mono)
-- ✅ Streaming de áudio via WebSocket com processamento em tempo real
-- ✅ Transcrição de áudio usando OpenAI Whisper (Faster-Whisper)
-- ✅ Sistema de playlists personalizáveis
-- ✅ Interface moderna com Jetpack Compose
-- ✅ Suporte a Bluetooth SCO para dispositivos externos
-- ✅ Reprodução com controle de velocidade (0.5x - 1.5x)
-- ✅ Animações suaves e design infantil
-- ✅ Salvamento automático de áudios processados
+1. [O que é o CalmWave](#o-que-é-o-calmwave)
+2. [Como o aplicativo está organizado](#como-o-aplicativo-está-organizado)
+3. [Ferramentas e tecnologias](#ferramentas-e-tecnologias)
+4. [Estrutura de pastas](#estrutura-de-pastas)
+5. [Peças principais do aplicativo](#peças-principais-do-aplicativo)
+6. [Guia para programadores](#guia-para-programadores)
+7. [Guia para usuários](#guia-para-usuários)
+8. [Tudo que o aplicativo faz](#tudo-que-o-aplicativo-faz)
+9. [Ideias para melhorar](#ideias-para-melhorar)
+10. [Conexões com servidores](#conexões-com-servidores)
+11. [Como instalar e compilar](#como-instalar-e-compilar)
 
 ---
 
-## 🏗️ Arquitetura do Projeto
+## 🎯 O que é o CalmWave
 
-### Padrão Arquitetural: MVVM (Model-View-ViewModel)
+O **CalmWave** é um aplicativo para celulares Android que permite gravar áudios, limpar ruídos indesejados e até transformar fala em texto.
 
-```
-┌─────────────────┐
-│   View (UI)     │  ← Jetpack Compose
-│  Activities     │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│   ViewModel     │  ← MainViewModel
-│  (State Logic)  │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│     Model       │  ← Services & Recorders
-│  (Business)     │
-└─────────────────┘
-```
+### O que torna o CalmWave especial
 
-### Fluxo de Dados
-
-```
-User Action → Activity → ViewModel → Service → API/WebSocket
-                ↑                                    ↓
-                └──────── State Update ──────────────┘
-```
+- ✅ **Grava com qualidade** - Áudios nítidos e claros  (16kHz, formato WAV de alta qualidade)
+- ✅ **Remove ruídos enquanto grava** - Limpa barulhos de fundo em tempo real
+- ✅ **Funciona sem internet** - A limpeza de ruídos acontece no próprio celular usando inteligência artificial
+- ✅ **Transforma fala em texto** - Usa o sistema Whisper da OpenAI (quando tem internet disponível)
+- ✅ **Organiza seus áudios** - Crie pastas coloridas para organizar
+- ✅ **Interface amigável** - Fácil de usar, com cores bonitas e animações suaves
+- ✅ **Funciona com Bluetooth** - Use fones ou microfones Bluetooth
+- ✅ **Controle total na reprodução** - Ajuste velocidade de 0.5x até 1.5x, pule trechos
+- ✅ **Animações bonitas** - Veja as ondas sonoras enquanto grava
+- ✅ **Salva duas versões** - Áudio original E áudio limpo
 
 ---
 
-## 🛠️ Tecnologias Utilizadas
+## 🏗️ Como o aplicativo está organizado
 
-### Core Technologies
+### Pense no CalmWave como uma empresa
 
-| Tecnologia | Versão | Uso |
-|-----------|--------|-----|
-| **Kotlin** | 2.0.21 | Linguagem principal |
-| **Android SDK** | API 24-36 | Plataforma Android |
-| **Jetpack Compose** | BOM 2024.09.00 | UI declarativa |
-| **Material 3** | Latest | Design system |
-| **Coroutines** | 1.7.3 | Programação assíncrona |
+Imagine que o aplicativo é como uma empresa com três departamentos:
 
-### Bibliotecas Principais
-
-#### 1. **Jetpack Compose**
-```kotlin
-// Compose BOM 2024.09.00
-implementation(platform("androidx.compose:compose-bom:2024.09.00"))
-implementation("androidx.compose.ui:ui")
-implementation("androidx.compose.material3:material3")
-implementation("androidx.compose.ui:ui-tooling-preview")
-implementation("androidx.activity:activity-compose:1.10.1")
+```
+┌─────────────────────────────────────────────────────────┐
+│           DEPARTAMENTO DE APRESENTAÇÃO                   │
+│  (O que você vê na tela - botões, cores, textos)        │
+│                                                          │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
+│  │  Tela de     │  │  Tela de     │  │  Tela do     │  │
+│  │  Gravação    │  │  Pastas      │  │  Player      │  │
+│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘  │
+│         │                  │                  │          │
+└─────────┼──────────────────┼──────────────────┼──────────┘
+          │                  │                  │
+          ▼                  ▼                  ▼
+┌─────────────────────────────────────────────────────────┐
+│        DEPARTAMENTO DA LÓGICA (Cérebro do app)          │
+│  (Decide o que fazer quando você toca em algo)          │
+│                                                          │
+│  ┌─────────────────────────────────────────────────┐    │
+│  │              MainViewModel                      │    │
+│  │  • Guarda informações importantes               │    │
+│  │  • Coordena todas as ações                      │    │
+│  │  • Gerencia o que aparece na tela               │    │
+│  └─────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────┘
+          │
+          ▼
+┌─────────────────────────────────────────────────────────┐
+│        DEPARTAMENTO DE AÇÃO (Faz as coisas)             │
+│  (Acessa microfone, salva arquivos, limpa áudio)        │
+│                                                          │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
+│  │ AudioService │  │ WavRecorder  │  │ ExoPlayer    │  │
+│  │              │  │              │  │   Player     │  │
+│  └──────┬───────┘  └──────┬───────┘  └──────────────┘  │
+│         │                  │                             │
+│  ┌──────┴──────────────────┴────┐  ┌──────────────┐    │
+│  │   Serviço de Upload           │  │ WebSocket    │    │
+│  │   (Envia para servidor)       │  │   Service    │    │
+│  └───────────────────────────────┘  └──────────────┘    │
+└─────────────────────────────────────────────────────────┘
+          │                              │
+          ▼                              ▼
+┌─────────────────────────────────────────────────────────┐
+│              MUNDO EXTERIOR                              │
+│  (Servidor de transcrição, sistema de arquivos, etc)   │
+│                                                          │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
+│  │  Servidor    │  │  Sistema de  │  │  Memória     │  │
+│  │  Whisper     │  │  Limpeza     │  │  do Celular  │  │
+│  └──────────────┘  └──────────────┘  └──────────────┘  │
+└─────────────────────────────────────────────────────────┘
 ```
 
-**Uso**: Interface de usuário declarativa moderna
+### Como funciona na prática:
 
-#### 2. **ExoPlayer (Media3)**
+**Exemplo: Quando você grava um áudio**
+
+1. **Você toca em "Iniciar"** na Tela de Gravação
+2. A tela **avisa o MainViewModel** (cérebro)
+3. O MainViewModel **pede ao WavRecorder** para começar a gravar
+4. O WavRecorder **acessa o microfone** e pega o som
+5. Enquanto grava, **envia pequenos pedaços** para limpeza
+6. O **AudioService limpa os ruídos** em tempo real
+7. Você **ouve o resultado limpo** pelo alto-falante
+8. Quando termina, **tudo é salvo** (original E limpo)
+9. A tela **mostra que terminou**
+
+---
+
+## 🛠️ Ferramentas e tecnologias
+
+### O que usamos para construir o CalmWave
+
+Pense em cada tecnologia como uma ferramenta específica numa caixa de ferramentas:
+
+#### 📱 Base do Aplicativo
+
+| Ferramenta | O que faz |
+|-----------|-----------|
+| **Kotlin 2.0.21** | A linguagem de programação que usamos - é como o "idioma" que o computador entende |
+| **Android SDK** | Kit de ferramentas do Google para criar apps Android (versões 7.0 até 14) |
+| **Jetpack Compose** | Sistema para criar telas bonitas de forma moderna |
+| **Material 3** | Guia de design do Google que define cores, botões e estilos |
+| **Coroutines** | Permite fazer várias coisas ao mesmo tempo sem travar o app |
+
+#### 🎨 Interface Visual (O que você vê)
+
 ```kotlin
-implementation("androidx.media3:media3-exoplayer:1.8.0")
-implementation("androidx.media3:media3-ui:1.8.0")
+// Exemplo de como criamos telas:
+Jetpack Compose = Blocos de construção visuais
+Material 3 = Manual de cores e estilos
+Accompanist = Ferramentas extras para interface
+Material Icons = Biblioteca de ícones prontos
 ```
 
-**Uso**: Reprodução de áudio avançada com controle de velocidade
+**Por que escolhemos isso:**
+- Cria telas mais rápido
+- Código mais limpo e fácil de manter
+- Visual moderno e profissional
+- Funciona bem em todos os celulares Android
 
-#### 3. **OkHttp**
-```kotlin
-implementation("com.squareup.okhttp3:okhttp:4.12.0")
-```
+#### 🔊 Áudio (Gravar e Tocar)
 
-**Uso**: Cliente HTTP/WebSocket para comunicação com backend
+| Ferramenta | O que faz | Por que usar |
+|-----------|-----------|--------------|
+| **ExoPlayer (Media3)** | Sistema profissional de reprodução | Criado pelo Google, muito confiável |
+| **AudioTrack** | Toca áudio em tempo real | Nativo do Android, super rápido |
+| **AudioRecord** | Captura som do microfone | Controle total sobre a gravação |
+| **WavRecorder** | Nossa própria gravadora | Grava em formato WAV com qualidade |
 
-#### 4. **Accompanist System UI Controller**
-```kotlin
-implementation("com.google.accompanist:accompanist-systemuicontroller:0.34.0")
-```
+#### 🤖 Inteligência Artificial
 
-**Uso**: Controle de barra de status e navegação
+| Ferramenta | O que faz | Onde funciona |
+|-----------|-----------|---------------|
+| **ONNX Runtime** | Executa IA no celular | Offline (sem internet) |
+| **OpenAI Whisper** | Transforma fala em texto | Servidor (precisa internet) |
+| **UNet Denoiser** | Remove ruídos do áudio | Offline (no celular) |
 
-#### 5. **Material Icons Extended**
-```kotlin
-implementation("androidx.compose.material:material-icons-extended")
-```
+**Como funciona:**
+1. Gravamos seu áudio
+2. A IA analisa e identifica o que é fala e o que é ruído
+3. Remove apenas os ruídos, mantendo sua voz clara
+4. Tudo isso acontece no seu celular, sem enviar dados para internet
 
-**Uso**: Ícones Material Design
+#### 🌐 Comunicação (Quando precisa de internet)
 
-### Ferramentas de Build
+| Ferramenta | O que faz |
+|-----------|-----------|
+| **OkHttp** | Conversa com servidores na internet |
+| **WebSocket** | Mantém conexão aberta para enviar/receber dados em tempo real |
+| **JSON** | Formato para trocar informações com o servidor |
 
-- **Gradle**: 8.8.0 (Kotlin DSL)
-- **Android Gradle Plugin**: 8.8.0
-- **Java**: 11 (source/target compatibility)
-- **Kotlin Serialization**: 2.0.21
+**Quando usamos:**
+- Para transcrever áudio (transformar fala em texto)
+- Para limpeza em tempo real via servidor (opcional)
 
-### APIs Externas Integradas
+#### 🔧 Ferramentas de Desenvolvimento
 
-#### 1. **API de Transcrição (Whisper)**
-- **Endpoint**: `http://10.67.57.104:5000/api/v1/audio/transcricao`
-- **Método**: POST multipart/form-data
-- **Tecnologia Backend**: OpenAI Whisper (Faster-Whisper)
-- **Funcionalidades**:
-  - Transcrição de áudio para texto
-  - Suporte a 99+ idiomas
-  - Detecção automática de idioma
-  - Modelos: tiny, base, small, medium, large
+| Ferramenta | O que faz |
+|-----------|-----------|
+| **Gradle 8.8.0** | Compila e organiza o código |
+| **Android Studio** | Programa onde escrevemos o código |
+| **Git** | Guarda o histórico de mudanças no código |
+| **JDK 11** | Kit de ferramentas Java necessário |
 
-#### 2. **WebSocket de Streaming**
-- **Endpoint**: `ws://10.67.57.104:5000/api/v1/streaming/ws/audio-streaming`
-- **Protocolo**: WebSocket (JSON messages)
-- **Funcionalidades**:
-  - Streaming de áudio em tempo real
-  - Processamento por chunks (1s)
-  - Resposta processada em tempo real
+### Resumo: Por que cada ferramenta?
+
+- **Kotlin** → Linguagem moderna e segura
+- **Jetpack Compose** → Telas bonitas mais rápido
+- **ExoPlayer** → Melhor player de áudio
+- **ONNX Runtime** → IA funciona offline
+- **Whisper** → Melhor transcrição do mercado
+- **OkHttp** → Comunicação confiável com servidores
   - Suporte a sessões
 
 ---
@@ -1295,35 +1341,6 @@ Todos os direitos reservados © 2025 vvAi Startup.
 
 ---
 
-## 📞 Suporte
-
-Para dúvidas, sugestões ou suporte:
-
-- **Email**: contato@vvai.com.br
-- **GitHub Issues**: [Application_mobile/issues](https://github.com/vvAi-Startup/Application_mobile/issues)
-- **Documentação**: Este arquivo
-
----
-
-## 📝 Changelog
-
-### Versão 1.0.0 (Atual)
-- ✅ Gravação de áudio WAV
-- ✅ Streaming WebSocket em tempo real
-- ✅ Transcrição via Whisper
-- ✅ Sistema de playlists
-- ✅ Player com controle de velocidade
-- ✅ Interface Jetpack Compose
-- ✅ Salvamento automático de áudios processados
-
-### Próximas Versões (Planejado)
-- 🔜 Autenticação de usuários
-- 🔜 Sincronização na nuvem
-- 🔜 Modo offline
-- 🔜 Compartilhamento de áudios
-- 🔜 Editor de áudio básico
-
----
 
 **Documentação criada em**: 14 de Novembro de 2025  
 **Última atualização**: 14 de Novembro de 2025  
