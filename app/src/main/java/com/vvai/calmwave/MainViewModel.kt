@@ -5,6 +5,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import android.util.Log
+import com.vvai.calmwave.data.model.AudioProcessingMetrics
+import com.vvai.calmwave.data.repository.AnalyticsRepository
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
@@ -28,6 +30,9 @@ class MainViewModel(
 
     // Processador local de denoising (offline)
     private val localDenoiser = LocalAudioDenoiser(context)
+    
+    // Repositório de analytics para enviar métricas ao backend
+    private val analyticsRepository = AnalyticsRepository(context)
 
     // Definição do Estado da UI
     private val _uiState = MutableStateFlow(UiState())
@@ -54,6 +59,10 @@ class MainViewModel(
     // Sinaliza quando a gravação terminou por completo (arquivo WAV com header atualizado)
     private var recordingDone = CompletableDeferred<Unit>()
     private var onProcessedAudioSaved: ((File) -> Unit)? = null
+    
+    // Métricas de processamento
+    private var recordingStartTime: Long = 0
+    private var processingStartTime: Long = 0
 
     fun setProcessedAudioSaveCallback(callback: (File) -> Unit) {
         onProcessedAudioSaved = callback
@@ -86,8 +95,12 @@ class MainViewModel(
         // Guarda o caminho ANTES de suspender, para que stopRecordingAndProcess o veja
         currentRecordingPath = filePath
         recordingDone = CompletableDeferred()
+        recordingStartTime = System.currentTimeMillis()
 
         viewModelScope.launch(Dispatchers.IO) {
+            // Registra evento de início de gravação
+            analyticsRepository.logScreenView("GravarActivity")
+            
             _uiState.value = _uiState.value.copy(
                 isRecording = true,
                 statusText = "Gravando...",
@@ -194,6 +207,8 @@ class MainViewModel(
     }
 
     fun stopRecordingAndProcess(apiEndpoint: String) {
+        processingStartTime = System.currentTimeMillis()
+        
         viewModelScope.launch(Dispatchers.IO) {
             _uiState.value = _uiState.value.copy(
                 isRecording = false,
@@ -201,6 +216,10 @@ class MainViewModel(
                 statusText = "Finalizando processamento...",
                 currentPosition = 0
             )
+            
+            var errorOccurred = false
+            var errorMessage: String? = null
+            
             try {
                 wavRecorder.stopRecording()
                 audioService.stopBluetoothSco()
@@ -210,15 +229,65 @@ class MainViewModel(
 
                 // Finaliza o streaming e obtém o caminho do arquivo processado
                 val processedPath = audioService.stopStreamingPlayback()
+                
+                val processingEndTime = System.currentTimeMillis()
+                val processingTimeMs = processingEndTime - processingStartTime
+                val recordingDurationMs = processingStartTime - recordingStartTime
 
                 if (processedPath != null) {
                     val processedFile = File(processedPath)
+                    val originalFile = currentRecordingPath?.let { File(it) }
+                    
+                    // Coleta métricas de processamento
+                    val metrics = AudioProcessingMetrics(
+                        filename = processedFile.name,
+                        processingTimeMs = processingTimeMs,
+                        recordingDurationMs = recordingDurationMs,
+                        originalFileSizeBytes = originalFile?.length() ?: 0L,
+                        processedFileSizeBytes = processedFile.length(),
+                        sampleRate = 16000,
+                        deviceOrigin = "Android",
+                        wasOfflineProcessed = true,
+                        processedAt = processingEndTime,
+                        userId = null, // TODO: Adicionar user ID quando implementar autenticação
+                        modelVersion = "1.0",
+                        errorOccurred = false
+                    )
+                    
+                    // Registra métricas localmente (sincroniza automaticamente quando online)
+                    analyticsRepository.logAudioProcessingMetrics(metrics)
+                    analyticsRepository.logAudioRecorded(
+                        durationMs = recordingDurationMs,
+                        fileSizeBytes = originalFile?.length() ?: 0L
+                    )
+                    
+                    // Tenta fazer upload do áudio (se online)
+                    if (processedFile.exists() && processedFile.length() > 44) {
+                        analyticsRepository.uploadAudioFile(processedFile, metrics)
+                    }
+                    
                     onProcessedAudioSaved?.invoke(processedFile)
                     _uiState.value = _uiState.value.copy(
                         statusText = "✅ Áudio processado com IA local!"
                     )
                     Log.i("MainViewModel", "✅ Denoising streaming concluído: $processedPath")
                 } else if (currentRecordingPath != null) {
+                    errorOccurred = true
+                    errorMessage = "Modelo IA indisponível"
+                    
+                    // Registra falha
+                    val metrics = AudioProcessingMetrics(
+                        filename = currentRecordingPath?.let { File(it).name } ?: "unknown",
+                        processingTimeMs = processingTimeMs,
+                        recordingDurationMs = recordingDurationMs,
+                        originalFileSizeBytes = currentRecordingPath?.let { File(it).length() } ?: 0L,
+                        processedFileSizeBytes = 0L,
+                        wasOfflineProcessed = false,
+                        errorOccurred = true,
+                        errorMessage = errorMessage
+                    )
+                    analyticsRepository.logAudioProcessingMetrics(metrics)
+                    
                     // Fallback: nenhum processamento ocorreu (modelo não carregou)
                     _uiState.value = _uiState.value.copy(
                         statusText = "⚠️ Modelo IA indisponível. Áudio original salvo."
@@ -227,6 +296,22 @@ class MainViewModel(
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
+                errorOccurred = true
+                errorMessage = e.message
+                
+                // Registra erro
+                val metrics = AudioProcessingMetrics(
+                    filename = currentRecordingPath?.let { File(it).name } ?: "unknown",
+                    processingTimeMs = System.currentTimeMillis() - processingStartTime,
+                    recordingDurationMs = processingStartTime - recordingStartTime,
+                    originalFileSizeBytes = currentRecordingPath?.let { File(it).length() } ?: 0L,
+                    processedFileSizeBytes = 0L,
+                    wasOfflineProcessed = false,
+                    errorOccurred = true,
+                    errorMessage = errorMessage
+                )
+                analyticsRepository.logAudioProcessingMetrics(metrics)
+                
                 _uiState.value = _uiState.value.copy(
                     statusText = "Erro ao parar gravação: ${e.message}"
                 )
@@ -386,6 +471,15 @@ class MainViewModel(
     // Funções de Reprodução
     fun playAudioFile(filePath: String) {
         viewModelScope.launch {
+            // Registra evento de reprodução de áudio
+            val file = File(filePath)
+            val isProcessed = filePath.contains("denoised") || filePath.contains("processed")
+            analyticsRepository.logAudioPlayed(
+                audioId = null,
+                filename = file.name,
+                isProcessed = isProcessed
+            )
+            
             _uiState.value = _uiState.value.copy(
                 statusText = "Reproduzindo...",
                 isPlaying = true,
