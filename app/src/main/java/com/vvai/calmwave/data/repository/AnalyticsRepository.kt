@@ -3,32 +3,40 @@ package com.vvai.calmwave.data.repository
 import android.content.Context
 import android.util.Log
 import com.google.gson.Gson
+import com.vvai.calmwave.data.auth.GuestSessionManager
 import com.vvai.calmwave.data.local.AppDatabase
 import com.vvai.calmwave.data.model.AnalyticsEvent
 import com.vvai.calmwave.data.model.AudioProcessingMetrics
+import com.vvai.calmwave.data.model.PendingAudioUpload
 import com.vvai.calmwave.data.remote.ApiClient
+import com.vvai.calmwave.util.NetworkMonitor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
-import java.io.File
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
+import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.File
+import kotlin.math.roundToInt
 
 /**
  * Repositório para gerenciamento de analytics e sincronização com backend
  */
 class AnalyticsRepository(context: Context) {
-    
+    private val appContext = context.applicationContext
     private val database = AppDatabase.getDatabase(context)
     private val analyticsDao = database.analyticsEventDao()
-    private val apiService = ApiClient.getApiService()
+    private val pendingAudioUploadDao = database.pendingAudioUploadDao()
+    private val apiService get() = ApiClient.getApiService()
     private val gson = Gson()
+    private val networkMonitor = NetworkMonitor.getInstance(appContext)
     
     companion object {
         private const val TAG = "AnalyticsRepository"
         private const val MAX_SYNC_ATTEMPTS = 3
+        private const val MAX_UPLOAD_SYNC_ATTEMPTS = 10
     }
     
     // ========== Gravação de Eventos ==========
@@ -234,27 +242,44 @@ class AnalyticsRepository(context: Context) {
     }
     
     /**
-     * Upload de arquivo de áudio processado
-     * Backend adm_calm_wave aceita apenas file e device_origin
+     * Sincroniza metadados do áudio processado na rota /api/audios/sync.
+     * Não envia arquivo, apenas dados essenciais de gravação/processamento.
      */
     suspend fun uploadAudioFile(
         audioFile: File,
         metrics: AudioProcessingMetrics
     ): Boolean = withContext(Dispatchers.IO) {
         try {
-            val requestFile = audioFile.asRequestBody("audio/wav".toMediaTypeOrNull())
-            val body = MultipartBody.Part.createFormData("file", audioFile.name, requestFile)
-            val deviceOrigin = "Android".toRequestBody("text/plain".toMediaTypeOrNull())
-            
-            val response = apiService.uploadAudio(
-                file = body,
-                deviceOrigin = deviceOrigin
+            if (!audioFile.exists() || audioFile.length() <= 44) {
+                Log.w(TAG, "Arquivo inválido para upload: ${audioFile.absolutePath}")
+                return@withContext false
+            }
+
+            // Offline-first: se estiver offline, armazena em cache e sincroniza depois
+            if (!networkMonitor.isCurrentlyOnline()) {
+                enqueueAudioUpload(audioFile, metrics)
+                Log.d(TAG, "📦 Áudio enfileirado para sincronização futura (offline): ${audioFile.name}")
+                return@withContext true
+            }
+
+            ensureGuestAuthorizationIfNeeded()
+
+            val response = syncAudioMultipart(
+                audioFile = audioFile,
+                deviceOrigin = metrics.deviceOrigin,
+                durationSeconds = (metrics.recordingDurationMs / 1000.0).roundToInt(),
+                processingTimeMs = metrics.processingTimeMs,
+                transcriptionText = null,
+                processedFile = null
             )
+
+            // Se token estiver ausente/expirado, tenta revalidar guest 1x e repetir.
+            // (syncAudioMultipart já faz 1 retry interno em caso de 401)
             
             if (response.isSuccessful) {
-                Log.d(TAG, "✅ Áudio enviado com sucesso: ${audioFile.name}")
+                Log.d(TAG, "✅ Metadados de áudio sincronizados com sucesso: ${audioFile.name}")
                 
-                // Registra evento de upload bem-sucedido com as métricas
+                // Registra evento de sincronização bem-sucedida com as métricas
                 logEvent(
                     eventType = "AUDIO_UPLOADED",
                     details = mapOf(
@@ -270,12 +295,181 @@ class AnalyticsRepository(context: Context) {
                 
                 true
             } else {
-                Log.e(TAG, "❌ Falha ao enviar áudio: ${response.code()}")
+                Log.e(TAG, "❌ Falha ao sincronizar metadados de áudio: ${response.code()}")
+                enqueueAudioUpload(audioFile, metrics)
                 false
             }
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Erro ao enviar áudio: ${e.message}", e)
+            Log.e(TAG, "❌ Erro ao sincronizar metadados de áudio: ${e.message}", e)
+            enqueueAudioUpload(audioFile, metrics)
             false
+        }
+    }
+
+    /**
+     * Armazena upload pendente no banco local para sincronização posterior.
+     */
+    private suspend fun enqueueAudioUpload(audioFile: File, metrics: AudioProcessingMetrics? = null) {
+        if (!audioFile.exists()) return
+
+        val pendingUpload = PendingAudioUpload(
+            filePath = audioFile.absolutePath,
+            fileName = audioFile.name,
+            mimeType = "audio/wav",
+            deviceOrigin = metrics?.deviceOrigin ?: "Android"
+        )
+        pendingAudioUploadDao.insert(pendingUpload)
+    }
+
+    /**
+     * Sincroniza uploads de áudio pendentes quando houver conectividade.
+     */
+    suspend fun syncPendingAudioUploads(): Int = withContext(Dispatchers.IO) {
+        if (!networkMonitor.isCurrentlyOnline()) {
+            Log.d(TAG, "Sem conexão - mantendo uploads pendentes em cache")
+            return@withContext 0
+        }
+
+        ensureGuestAuthorizationIfNeeded()
+
+        val pending = pendingAudioUploadDao
+            .getPendingUploads(limit = 20)
+            .filter { it.syncAttempts < MAX_UPLOAD_SYNC_ATTEMPTS }
+
+        if (pending.isEmpty()) {
+            return@withContext 0
+        }
+
+        var syncedCount = 0
+        for (upload in pending) {
+            val file = File(upload.filePath)
+
+            if (!file.exists() || file.length() <= 44) {
+                Log.w(TAG, "Removendo pendência inválida (arquivo ausente/corrompido): ${upload.filePath}")
+                pendingAudioUploadDao.deleteById(upload.id)
+                continue
+            }
+
+            try {
+                val response = syncAudioMultipart(
+                    audioFile = file,
+                    deviceOrigin = upload.deviceOrigin,
+                    durationSeconds = estimateWavDurationSeconds(file),
+                    processingTimeMs = null,
+                    transcriptionText = null,
+                    processedFile = null
+                )
+
+                if (response.isSuccessful) {
+                    pendingAudioUploadDao.deleteById(upload.id)
+                    syncedCount++
+                    Log.d(TAG, "✅ Upload pendente sincronizado: ${upload.fileName}")
+                } else {
+                    pendingAudioUploadDao.incrementSyncAttempts(
+                        id = upload.id,
+                        error = "HTTP ${response.code()}"
+                    )
+                    Log.w(TAG, "Falha ao sincronizar upload pendente ${upload.id}: ${response.code()}")
+                }
+            } catch (e: Exception) {
+                pendingAudioUploadDao.incrementSyncAttempts(
+                    id = upload.id,
+                    error = e.message
+                )
+                Log.w(TAG, "Erro ao sincronizar upload pendente ${upload.id}: ${e.message}")
+            }
+        }
+
+        syncedCount
+    }
+
+    private suspend fun syncAudioMultipart(
+        audioFile: File,
+        deviceOrigin: String,
+        durationSeconds: Int?,
+        processingTimeMs: Long?,
+        transcriptionText: String?,
+        processedFile: File?
+    ): retrofit2.Response<Map<String, Any>> {
+        val fileRequestBody = audioFile.asRequestBody("audio/wav".toMediaTypeOrNull())
+        val filePart = MultipartBody.Part.createFormData("file", audioFile.name, fileRequestBody)
+
+        val deviceOriginBody = deviceOrigin
+            .ifBlank { "Android" }
+            .toRequestBody("text/plain".toMediaTypeOrNull())
+
+        val durationBody: RequestBody? = durationSeconds
+            ?.coerceAtLeast(0)
+            ?.toString()
+            ?.toRequestBody("text/plain".toMediaTypeOrNull())
+
+        val processingBody: RequestBody? = processingTimeMs
+            ?.coerceAtLeast(0L)
+            ?.toString()
+            ?.toRequestBody("text/plain".toMediaTypeOrNull())
+
+        val transcriptionBody: RequestBody? = transcriptionText
+            ?.takeIf { it.isNotBlank() }
+            ?.toRequestBody("text/plain".toMediaTypeOrNull())
+
+        val processedPart: MultipartBody.Part? = processedFile?.takeIf { it.exists() && it.length() > 44 }?.let { pf ->
+            val body = pf.asRequestBody("audio/wav".toMediaTypeOrNull())
+            MultipartBody.Part.createFormData("processed_file", pf.name, body)
+        }
+
+        var response = apiService.syncAudioMultipart(
+            file = filePart,
+            deviceOrigin = deviceOriginBody,
+            durationSeconds = durationBody,
+            processingTimeMs = processingBody,
+            transcriptionText = transcriptionBody,
+            processedFile = processedPart
+        )
+
+        if (response.code() == 401) {
+            Log.w(TAG, "401 ao sincronizar (multipart); tentando renovar sessão guest")
+            GuestSessionManager.clear(appContext)
+            ensureGuestAuthorizationIfNeeded()
+            response = apiService.syncAudioMultipart(
+                file = filePart,
+                deviceOrigin = deviceOriginBody,
+                durationSeconds = durationBody,
+                processingTimeMs = processingBody,
+                transcriptionText = transcriptionBody,
+                processedFile = processedPart
+            )
+        }
+
+        return response
+    }
+
+    private suspend fun ensureGuestAuthorizationIfNeeded() {
+        // Se já existe token em memória, não faz nada.
+        if (!ApiClient.getAuthToken().isNullOrBlank()) return
+
+        val token = GuestSessionManager.ensureGuestSession(appContext)
+        if (token.isNullOrBlank()) {
+            Log.w(TAG, "Não foi possível obter token guest; chamadas autenticadas podem falhar")
+        }
+    }
+
+    suspend fun getPendingAudioUploadCount(): Int = withContext(Dispatchers.IO) {
+        pendingAudioUploadDao.countPendingUploads()
+    }
+
+    suspend fun cleanupSyncedAudioUploads() = withContext(Dispatchers.IO) {
+        pendingAudioUploadDao.deleteAllSynced()
+    }
+
+    private fun estimateWavDurationSeconds(file: File): Int {
+        return try {
+            if (!file.exists() || file.length() <= 44) return 0
+            val dataSize = (file.length() - 44L).coerceAtLeast(0L)
+            // Formato padrão do app: PCM 16-bit mono em 16kHz (2 bytes por amostra)
+            val bytesPerSecond = 16000L * 2L
+            (dataSize / bytesPerSecond).toInt().coerceAtLeast(0)
+        } catch (_: Exception) {
+            0
         }
     }
     

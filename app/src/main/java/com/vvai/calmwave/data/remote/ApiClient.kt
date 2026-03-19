@@ -2,6 +2,7 @@ package com.vvai.calmwave.data.remote
 
 import android.content.Context
 import com.vvai.calmwave.Config
+import com.vvai.calmwave.util.ResilientDns
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
@@ -57,6 +58,7 @@ object ApiClient {
         }
         
         return OkHttpClient.Builder()
+            .dns(ResilientDns)
             .addInterceptor(createAuthInterceptor())
             .addInterceptor(loggingInterceptor)
             .connectTimeout(30, TimeUnit.SECONDS)

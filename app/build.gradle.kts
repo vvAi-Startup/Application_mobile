@@ -21,10 +21,10 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // BuildConfig fields from environment variables
-        // 10.0.2.2 é o IP especial do emulador Android para acessar localhost do PC
-        val apiBaseUrl = System.getenv("API_BASE_URL") ?: "http://10.0.2.2:5000"
-        val wsBaseUrl = System.getenv("WS_BASE_URL") ?: "ws://10.0.2.2:5000"
-        val dbBaseUrl = System.getenv("DB_BASE_URL") ?: "http://10.0.2.2:5000"
+        // Fallback padrão aponta para o backend em produção (Render)
+        val apiBaseUrl = System.getenv("API_BASE_URL") ?: "https://calm-wave-backend.onrender.com"
+        val wsBaseUrl = System.getenv("WS_BASE_URL") ?: "wss://calm-wave-backend.onrender.com"
+        val dbBaseUrl = System.getenv("DB_BASE_URL") ?: "https://calm-wave-backend.onrender.com"
         buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
         buildConfigField("String", "WS_BASE_URL", "\"$wsBaseUrl\"")
         buildConfigField("String", "DB_BASE_URL", "\"$dbBaseUrl\"")

@@ -79,23 +79,26 @@ class SyncAnalyticsWorker(
     
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         return@withContext try {
-            Log.d(TAG, "Iniciando sincronização de analytics...")
+            Log.d(TAG, "Iniciando sincronização offline-first...")
             
-            // Verifica se há eventos para sincronizar
-            val pendingCount = analyticsRepository.getUnsyncedEventCount()
+            val pendingEventsCount = analyticsRepository.getUnsyncedEventCount()
+            val pendingUploadsCount = analyticsRepository.getPendingAudioUploadCount()
+            val totalPending = pendingEventsCount + pendingUploadsCount
             
-            if (pendingCount == 0) {
-                Log.d(TAG, "Nenhum evento para sincronizar")
+            if (totalPending == 0) {
+                Log.d(TAG, "Nenhum item pendente para sincronizar")
                 return@withContext Result.success()
             }
             
-            Log.d(TAG, "Encontrados $pendingCount eventos pendentes")
+            Log.d(TAG, "Pendências: eventos=$pendingEventsCount uploads=$pendingUploadsCount")
             
-            // Sincroniza eventos
-            val syncedCount = analyticsRepository.syncPendingEvents()
+            // Sincroniza eventos e uploads pendentes
+            val syncedEventsCount = analyticsRepository.syncPendingEvents()
+            val syncedUploadsCount = analyticsRepository.syncPendingAudioUploads()
+            val syncedCount = syncedEventsCount + syncedUploadsCount
             
             if (syncedCount > 0) {
-                Log.d(TAG, "✅ Sincronizados $syncedCount eventos com sucesso")
+                Log.d(TAG, "✅ Sincronizados $syncedCount itens (eventos=$syncedEventsCount, uploads=$syncedUploadsCount)")
                 
                 // Limpa eventos antigos sincronizados
                 analyticsRepository.cleanupOldSyncedEvents()
@@ -103,13 +106,18 @@ class SyncAnalyticsWorker(
                 Result.success(
                     workDataOf(
                         "synced_count" to syncedCount,
-                        "pending_count" to pendingCount
+                        "pending_count" to totalPending
                     )
                 )
             } else {
-                // Se nenhum evento foi sincronizado, retry
-                Log.w(TAG, "⚠️ Nenhum evento foi sincronizado, tentando novamente...")
-                Result.retry()
+                // Sem itens sincronizados agora (ex.: autenticação pendente), mantém cache local.
+                Log.w(TAG, "⚠️ Nenhum item foi sincronizado nesta execução")
+                Result.success(
+                    workDataOf(
+                        "synced_count" to 0,
+                        "pending_count" to totalPending
+                    )
+                )
             }
         } catch (e: Exception) {
             Log.e(TAG, "❌ Erro na sincronização: ${e.message}", e)

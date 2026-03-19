@@ -17,7 +17,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
-import com.vvai.calmwave.service.AudioUploadService
 
 class MainViewModel(
     private val audioService: AudioService,
@@ -25,8 +24,7 @@ class MainViewModel(
     private val context: Context
 ) : ViewModel() {
     
-    // Serviço de upload
-    private val uploadService = AudioUploadService()
+    // ✅ NOVO: Sincroniza apenas metadados em /api/audios/sync via AnalyticsRepository
 
     // Processador local de denoising (offline)
     private val localDenoiser = LocalAudioDenoiser(context)
@@ -206,7 +204,7 @@ class MainViewModel(
         }
     }
 
-    fun stopRecordingAndProcess(apiEndpoint: String) {
+    fun stopRecordingAndProcess() {
         processingStartTime = System.currentTimeMillis()
         
         viewModelScope.launch(Dispatchers.IO) {
@@ -323,112 +321,8 @@ class MainViewModel(
         }
     }
     
-    /**
-     * Faz transcrição do arquivo de áudio processado usando OpenAI Whisper
-     */
-    private fun uploadProcessedAudio(processedFile: File, uploadUrl: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                println("=== INICIANDO TRANSCRIÇÃO ===")
-                println("Arquivo: ${processedFile.absolutePath}")
-                println("Tamanho: ${processedFile.length()} bytes")
-                println("URL de transcrição: $uploadUrl")
-                
-                _uiState.value = _uiState.value.copy(
-                    isUploading = true,
-                    uploadProgress = 0,
-                    statusText = "Iniciando transcrição do áudio..."
-                )
-                
-                // Callback para acompanhar progresso do upload/transcrição
-                val onProgress: (Long, Long) -> Unit = { uploaded, total ->
-                    val percentage = if (total > 0) (uploaded * 100 / total).toInt() else 0
-                    _uiState.value = _uiState.value.copy(
-                        uploadProgress = percentage,
-                        statusText = when {
-                            percentage < 50 -> "Enviando áudio: $percentage%"
-                            percentage < 90 -> "Processando transcrição: $percentage%"
-                            else -> "Finalizando transcrição: $percentage%"
-                        }
-                    )
-                }
-                
-                // Executa a transcrição usando o método conveniente ou personalizado
-                val result = if (uploadUrl.contains("transcricao")) {
-                    // Usa o método conveniente para transcrição
-                    uploadService.transcribeAudio(
-                        audioFile = processedFile,
-                        onProgress = onProgress
-                    )
-                } else {
-                    // Usa o método customizado se for outro endpoint
-                    uploadService.uploadProcessedAudio(
-                        uploadUrl = uploadUrl,
-                        audioFile = processedFile,
-                        language = "pt",
-                        modelSize = "medium",
-                        highQuality = true,
-                        onProgress = onProgress
-                    )
-                }
-                
-                // Trata o resultado da transcrição
-                when (result) {
-                    is AudioUploadService.UploadResult.Success -> {
-                        _uiState.value = _uiState.value.copy(
-                            isUploading = false,
-                            uploadProgress = 100,
-                            statusText = "Transcrição concluída com sucesso! Texto extraído do áudio."
-                        )
-                        println("Transcrição bem-sucedida: ${result.response}")
-                        // TODO: Aqui você pode processar o texto transcrito (result.response)
-                        // Por exemplo, salvar em um arquivo ou exibir na interface
-                    }
-                    is AudioUploadService.UploadResult.Error -> {
-                        _uiState.value = _uiState.value.copy(
-                            isUploading = false,
-                            uploadProgress = 0,
-                            statusText = "Áudio salvo, mas falha na transcrição: ${result.message}"
-                        )
-                        println("Erro na transcrição: ${result.message}")
-                    }
-                }
-                
-            } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    isUploading = false,
-                    uploadProgress = 0,
-                    statusText = "Áudio salvo, mas erro na transcrição: ${e.message}"
-                )
-                println("Exceção durante transcrição: ${e.message}")
-                e.printStackTrace()
-            }
-        }
-    }
-    
-    /**
-     * Permite fazer transcrição manual de um arquivo de áudio específico
-     */
-    fun transcribeAudioFile(audioFile: File, uploadUrl: String? = null) {
-        if (!audioFile.exists()) {
-            _uiState.value = _uiState.value.copy(
-                statusText = "Erro: Arquivo não encontrado para transcrição."
-            )
-            return
-        }
-        
-        // Usa o endpoint de transcrição padrão se não especificado
-        val transcriptionUrl = uploadUrl ?: Config.transcriptionUrl
-        uploadProcessedAudio(audioFile, transcriptionUrl)
-    }
-    
-    /**
-     * Método legado para compatibilidade - redireciona para transcrição
-     */
-    @Deprecated("Use transcribeAudioFile instead", ReplaceWith("transcribeAudioFile(audioFile, uploadUrl)"))
-    fun uploadAudioFile(audioFile: File, uploadUrl: String = Config.transcriptionUrl) {
-        transcribeAudioFile(audioFile, uploadUrl)
-    }
+    // ✅ NOVO: Sincroniza apenas metadados de gravação/processamento em /api/audios/sync
+    // Use AnalyticsRepository.uploadAudioFile() para sincronizar áudios
     
     /**
      * Cancela o upload em progresso (se implementado no futuro)
@@ -562,38 +456,6 @@ class MainViewModel(
         _uiState.value = _uiState.value.copy(
             currentPosition = _uiState.value.currentPosition + deltaMs
         )
-    }
-
-    // Função para testar a API manualmente
-    fun testAPI() {
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(
-                statusText = "Testando conexão com API..."
-            )
-            
-            val apiEndpoint = Config.uploadUrl
-            val result = audioService.testAPIConnection(apiEndpoint)
-            
-            _uiState.value = _uiState.value.copy(
-                statusText = if (result) "API conectada com sucesso!" else "Falha na conexão com a API"
-            )
-        }
-    }
-
-    // Função para testar conectividade básica
-    fun testBasicConnectivity() {
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(
-                statusText = "Testando conectividade básica..."
-            )
-            
-            val apiEndpoint = Config.uploadUrl
-            val result = audioService.testBasicConnectivity(apiEndpoint)
-            
-            _uiState.value = _uiState.value.copy(
-                statusText = if (result) "Servidor respondendo!" else "Servidor não responde"
-            )
-        }
     }
 
     // Funções para carregar arquivos e monitorar a reprodução

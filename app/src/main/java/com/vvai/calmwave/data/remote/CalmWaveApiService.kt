@@ -44,14 +44,27 @@ interface CalmWaveApiService {
     // ========== Áudios ==========
     
     /**
-     * Faz upload de áudio processado
-     * Backend aceita apenas: file e device_origin
+     * Sincroniza metadados do áudio (JSON).
+     * Observação: o backend em produção pode estar exigindo multipart em /audios/sync;
+     * para isso use syncAudioMultipart.
+     */
+    @POST("api/audios/sync")
+    suspend fun syncAudioMetadataJson(
+        @Body data: AudioSyncRequest
+    ): Response<Map<String, Any>>
+
+    /**
+     * Sincronização via multipart (compatível com handler que exige o arquivo em `file`).
      */
     @Multipart
-    @POST("api/audios/upload")
-    suspend fun uploadAudio(
+    @POST("api/audios/sync")
+    suspend fun syncAudioMultipart(
         @Part file: MultipartBody.Part,
-        @Part("device_origin") deviceOrigin: RequestBody? = null
+        @Part("device_origin") deviceOrigin: RequestBody? = null,
+        @Part("duration_seconds") durationSeconds: RequestBody? = null,
+        @Part("processing_time_ms") processingTimeMs: RequestBody? = null,
+        @Part("transcription_text") transcriptionText: RequestBody? = null,
+        @Part processedFile: MultipartBody.Part? = null
     ): Response<Map<String, Any>>
     
     /**

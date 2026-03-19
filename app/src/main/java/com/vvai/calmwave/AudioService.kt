@@ -10,6 +10,8 @@ import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
 import android.media.AudioTrack.MODE_STREAM
+import com.vvai.calmwave.data.remote.ApiClient
+import com.vvai.calmwave.util.ResilientDns
 import kotlinx.coroutines.*
 import kotlinx.coroutines.Job
 import okhttp3.OkHttpClient
@@ -170,6 +172,7 @@ class AudioService {
     }
     private val CHUNK_SIZE = 4096
     private val client = OkHttpClient.Builder()
+        .dns(ResilientDns)
         .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
         .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
         .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
@@ -854,23 +857,25 @@ class AudioService {
                 val requestBody = okhttp3.MultipartBody.Builder()
                     .setType(okhttp3.MultipartBody.FORM)
                     .addFormDataPart(
-                        "audio",
+                        "file",
                         "chunk_${chunkIndex}.wav",
                         okhttp3.RequestBody.create(
                             "audio/wav".toMediaType(),
                             tempFile
                         )
                     )
+                    .addFormDataPart("device_origin", "Android")
                     .build()
-                
-                val request = Request.Builder()
+
+                val requestBuilder = Request.Builder()
                     .url(apiEndpoint)
-                    .addHeader("X-Session-ID", sessionId)
-                    .addHeader("X-Chunk-Index", chunkIndex.toString())
-                    .addHeader("X-Chunk-Timestamp", System.currentTimeMillis().toString())
-                    .addHeader("X-Chunk-Size", chunkData.size.toString())
                     .post(requestBody)
-                    .build()
+
+                ApiClient.getAuthToken()?.let {
+                    requestBuilder.addHeader("Authorization", "Bearer $it")
+                }
+
+                val request = requestBuilder.build()
 
                 println("Fazendo requisição para: ${request.url}")
                 println("Headers: ${request.headers}")
@@ -925,8 +930,8 @@ class AudioService {
             println("=== TESTE DE CONECTIVIDADE BÁSICA ===")
             println("Endpoint base: $apiEndpoint")
             
-            // Deriva /health a partir do upload informado
-            val baseUrl = apiEndpoint.replace("/upload", "/health")
+            // Usa endpoint de health oficial da API
+            val baseUrl = Config.healthUrl
             println("Testando conectividade em: $baseUrl")
             
             val request = Request.Builder()
@@ -949,13 +954,14 @@ class AudioService {
                 val responseBody = response.body?.string()
                 println("Corpo da resposta: $responseBody")
                 
-                if (response.isSuccessful) {
-                    println("✅ SERVIDOR RESPONDEU!")
+                val reachable = response.code in 200..499
+                if (reachable) {
+                    println("✅ SERVIDOR RESPONDEU (conectividade OK)")
                     return@withContext true
-                } else {
-                    println("❌ SERVIDOR RESPONDEU COM ERRO - Código: ${response.code}")
-                    return@withContext false
                 }
+
+                println("❌ FALHA DE CONECTIVIDADE - Código: ${response.code}")
+                return@withContext false
             }
         } catch (e: Exception) {
             println("=== ERRO NA CONECTIVIDADE BÁSICA ===")
@@ -988,24 +994,25 @@ class AudioService {
                 val requestBody = okhttp3.MultipartBody.Builder()
                     .setType(okhttp3.MultipartBody.FORM)
                     .addFormDataPart(
-                        "audio",
+                        "file",
                         "test_audio.wav",
                         okhttp3.RequestBody.create(
                             "audio/wav".toMediaType(),
                             tempFile
                         )
                     )
+                    .addFormDataPart("device_origin", "Android")
                     .build()
-                
-                val request = Request.Builder()
+
+                val requestBuilder = Request.Builder()
                     .url(apiEndpoint)
-                    .addHeader("X-Session-ID", "test-session-${System.currentTimeMillis()}")
-                    .addHeader("X-Chunk-Index", "0")
-                    .addHeader("X-Chunk-Timestamp", System.currentTimeMillis().toString())
-                    .addHeader("X-Chunk-Size", testData.size.toString())
-                    .addHeader("X-Test-Mode", "true")
                     .post(requestBody)
-                    .build()
+
+                ApiClient.getAuthToken()?.let {
+                    requestBuilder.addHeader("Authorization", "Bearer $it")
+                }
+
+                val request = requestBuilder.build()
 
                 println("Requisição preparada:")
                 println("  URL: ${request.url}")
@@ -1028,13 +1035,14 @@ class AudioService {
                     val responseBody = response.body?.string()
                     println("Corpo da resposta: $responseBody")
                     
-                    if (response.isSuccessful) {
-                        println("✅ CONEXÃO BEM-SUCEDIDA!")
+                    val reachable = response.code in 200..499
+                    if (reachable) {
+                        println("✅ CONEXÃO BEM-SUCEDIDA (servidor acessível)")
                         return@withContext true
-                    } else {
-                        println("❌ FALHA NA CONEXÃO - Código: ${response.code}")
-                        return@withContext false
                     }
+
+                    println("❌ FALHA NA CONEXÃO - Código: ${response.code}")
+                    return@withContext false
                 }
             } finally {
                 // Remove o arquivo temporário

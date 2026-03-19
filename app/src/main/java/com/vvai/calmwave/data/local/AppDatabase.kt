@@ -5,18 +5,20 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import com.vvai.calmwave.data.model.AnalyticsEvent
+import com.vvai.calmwave.data.model.PendingAudioUpload
 
 /**
  * Banco de dados local do aplicativo usando Room
  */
 @Database(
-    entities = [AnalyticsEvent::class],
-    version = 1,
+    entities = [AnalyticsEvent::class, PendingAudioUpload::class],
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     
     abstract fun analyticsEventDao(): AnalyticsEventDao
+    abstract fun pendingAudioUploadDao(): PendingAudioUploadDao
     
     companion object {
         @Volatile

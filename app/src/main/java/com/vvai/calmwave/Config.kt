@@ -11,11 +11,7 @@ object Config {
     val apiBaseUrl: String get() = BuildConfig.API_BASE_URL.trimEnd('/')
     val wsBaseUrl: String get() = BuildConfig.WS_BASE_URL.trimEnd('/')
     val dbBaseUrl: String get() = BuildConfig.DB_BASE_URL.trimEnd('/')
-
-    // REST endpoints (usados apenas quando offlineMode = false)
-    val uploadUrl: String get() = "$apiBaseUrl/upload"
-    val transcriptionUrl: String get() = "$apiBaseUrl/api/v1/audio/transcricao"
-    val healthUrl: String get() = "$apiBaseUrl/health"
+    val healthUrl: String get() = "$apiBaseUrl/api/health"
 
     // WebSocket endpoints (usados apenas quando offlineMode = false)
     val wsStreamUrl: String get() = "$wsBaseUrl/api/v1/streaming/ws/audio-streaming"

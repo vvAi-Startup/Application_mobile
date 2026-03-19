@@ -126,13 +126,7 @@ class MainActivity : ComponentActivity() {
                             }
                         },
                         onStopClicked = {
-                            viewModel.stopRecordingAndProcess(apiEndpoint = Config.transcriptionUrl)
-                        },
-                        onTestAPIClicked = {
-                            viewModel.testAPI()
-                        },
-                        onTestBasicConnectivity = {
-                            viewModel.testBasicConnectivity()
+                            viewModel.stopRecordingAndProcess()
                         },
                         onFileClicked = { filePath ->
                             viewModel.playAudioFile(filePath)
@@ -279,8 +273,6 @@ fun AudioPlayerScreen(
     uiState: MainViewModel.UiState,
     onRecordClicked: () -> Unit,
     onStopClicked: () -> Unit,
-    onTestAPIClicked: () -> Unit,
-    onTestBasicConnectivity: () -> Unit,
     onFileClicked: (String) -> Unit,
     onPauseResumeClicked: () -> Unit,
     onStopPlaybackClicked: () -> Unit,
@@ -323,26 +315,6 @@ fun AudioPlayerScreen(
             }
 
             Spacer(modifier = Modifier.height(8.dp))
-
-            // Botões de Teste
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                Button(
-                    onClick = onTestAPIClicked,
-                    enabled = !uiState.isRecording && !uiState.isProcessing
-                ) {
-                    Text(text = "Testar API")
-                }
-                
-                Button(
-                    onClick = onTestBasicConnectivity,
-                    enabled = !uiState.isRecording && !uiState.isProcessing
-                ) {
-                    Text(text = "Testar Conexão")
-                }
-            }
 
             Spacer(modifier = Modifier.height(16.dp))
 
