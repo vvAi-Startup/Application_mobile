@@ -1,4 +1,4 @@
-package com.vvai.calmwave
+package com.vvai.calmwave.ui.screens
 
 import android.app.Activity
 import android.content.Intent
@@ -47,9 +47,11 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.vvai.calmwave.R
 
 // Top-level model used by several composables
 data class PlaylistItem(val title: String, val subtitle: String = "", val color: Color)
@@ -290,7 +292,7 @@ fun PrincipalScreen(modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun StatusCard(title: String, color: Color, icon: androidx.compose.ui.graphics.vector.ImageVector? = null, modifier: Modifier = Modifier) {
+fun StatusCard(title: String, color: Color, icon: ImageVector? = null, modifier: Modifier = Modifier) {
     Surface(
         modifier = modifier
             .height(90.dp),

@@ -1,4 +1,4 @@
-package com.vvai.calmwave
+package com.vvai.calmwave.ui.screens
 
 import android.Manifest
 import android.content.pm.PackageManager
@@ -10,11 +10,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Close
@@ -43,7 +41,12 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.tooling.preview.Preview
+import com.vvai.calmwave.AudioService
+import com.vvai.calmwave.Config
+import com.vvai.calmwave.MainViewModel
+import com.vvai.calmwave.MainViewModelFactory
+import com.vvai.calmwave.R
+import com.vvai.calmwave.WavRecorder
 import kotlin.math.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -126,7 +129,7 @@ class GravarActivity : ComponentActivity() {
                 LaunchedEffect(isRecording, isPaused) {
                     while (isRecording && !isPaused) {
                         viewModel.incrementCurrentPosition(1000) // incrementa 1 segundo (1000 ms)
-                        kotlinx.coroutines.delay(1000)
+                        delay(1000)
                     }
                 }
 
@@ -331,7 +334,7 @@ fun AnimatedWaveform(isRecording: Boolean, isPaused: Boolean, modifier: Modifier
     val barCount = 36
 
     // animatable que mantém a fase atual; quando pausado o LaunchedEffect é cancelado e o valor fica 'congelado'
-    val phaseAnim = remember { androidx.compose.animation.core.Animatable(0f) }
+    val phaseAnim = remember { Animatable(0f) }
 
     // atualiza continuamente com suavização nas transições entre estados
     LaunchedEffect(isPaused, isRecording) {

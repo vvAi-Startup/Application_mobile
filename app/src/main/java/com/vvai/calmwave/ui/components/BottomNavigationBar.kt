@@ -1,6 +1,5 @@
 package com.vvai.calmwave.components
 
-import android.content.Context
 import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -19,7 +18,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.layout.ContentScale
 import com.vvai.calmwave.R
-import com.vvai.calmwave.GravarActivity
+import com.vvai.calmwave.ui.screens.GravarActivity
 import com.vvai.calmwave.PlaylistActivity
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
@@ -27,7 +26,7 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.Image
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.res.painterResource
-import com.vvai.calmwave.PrincipalActivity
+import com.vvai.calmwave.ui.screens.PrincipalActivity
 
 @Composable
 fun BottomNavigationBar(selected: String, modifier: Modifier = Modifier) {

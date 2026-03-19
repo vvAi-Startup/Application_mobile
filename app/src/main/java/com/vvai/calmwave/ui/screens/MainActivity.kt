@@ -1,4 +1,4 @@
-package com.vvai.calmwave
+package com.vvai.calmwave.ui.screens
 
 import android.Manifest
 import android.content.Intent
@@ -23,8 +23,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import com.vvai.calmwave.AudioService
+import com.vvai.calmwave.Config
+import com.vvai.calmwave.MainViewModel
+import com.vvai.calmwave.MainViewModelFactory
+import com.vvai.calmwave.PlaylistActivity
+import com.vvai.calmwave.WavRecorder
 import com.vvai.calmwave.ui.theme.CalmWaveTheme
 import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
 import java.text.SimpleDateFormat
@@ -71,106 +78,112 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             CalmWaveTheme {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Button(onClick = {
-                        // evita empilhar múltiplas instâncias: traz a activity existente para frente
-                        val intentGravar = Intent(this@MainActivity, GravarActivity::class.java).apply {
-                            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                var loggedIn by remember { mutableStateOf(intent?.getBooleanExtra("debug_secret", false) ?: false) }
+
+                if (!loggedIn) {
+                    LoginScreen(onLogin = { navigateToPrincipal() })
+                } else {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Button(onClick = {
+                            // evita empilhar múltiplas instâncias: traz a activity existente para frente
+                            val intentGravar = Intent(this@MainActivity, GravarActivity::class.java).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                            }
+                            startActivity(intentGravar)
+                        }) {
+                            Text("Ir para Gravar")
                         }
-                        startActivity(intentGravar)
-                    }) {
-                        Text("Ir para Gravar")
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Button(onClick = {
-                        val intentPlaylist = Intent(this@MainActivity, PlaylistActivity::class.java).apply {
-                            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Button(onClick = {
+                            val intentPlaylist = Intent(this@MainActivity, PlaylistActivity::class.java).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                            }
+                            startActivity(intentPlaylist)
+                        }) {
+                            Text("Ir para Playlist")
                         }
-                        startActivity(intentPlaylist)
-                    }) {
-                        Text("Ir para Playlist")
-                    }
 
-                    // 3. Coleta o estado da UI do ViewModel e passa para o Composable
-                    val uiState by viewModel.uiState.collectAsState()
+                        // 3. Coleta o estado da UI do ViewModel e passa para o Composable
+                        val uiState by viewModel.uiState.collectAsState()
 
-                    // 4. Carrega a lista de arquivos (originais e processados) ao iniciar a tela
-                    // O LaunchedEffect executa a lógica apenas uma vez
-                    val context = LocalContext.current
-                    LaunchedEffect(Unit) {
-                        val listFilesProvider: () -> List<File> = { listAllWavFiles() }
-                        viewModel.loadWavFiles(listFilesProvider)
-                    }
-
-                    AudioPlayerScreen(
-                        uiState = uiState,
-                        onRecordClicked = {
-                            val downloadsDir = getDownloadsDirectory()
-                            val fileName = generateFileName()
-                            val filePath = if (downloadsDir?.exists() == true) {
-                                "${downloadsDir.absolutePath}/$fileName"
-                            } else {
-                                val cacheDir = externalCacheDir
-                                cacheDir?.mkdirs()
-                                "${cacheDir?.absolutePath}/$fileName"
-                            }
-                            if (filePath != "null/null") {
-                                viewModel.startRecording(filePath)
-                            } else {
-                                Toast.makeText(context, "Erro: Não foi possível obter o diretório de gravação.", Toast.LENGTH_LONG).show()
-                            }
-                        },
-                        onStopClicked = {
-                            viewModel.stopRecordingAndProcess(apiEndpoint = Config.transcriptionUrl)
-                        },
-                        onTestAPIClicked = {
-                            viewModel.testAPI()
-                        },
-                        onTestBasicConnectivity = {
-                            viewModel.testBasicConnectivity()
-                        },
-                        onFileClicked = { filePath ->
-                            viewModel.playAudioFile(filePath)
-                        },
-                        onPauseResumeClicked = {
-                            if (uiState.isPlaying) {
-                                viewModel.pausePlayback()
-                            } else {
-                                viewModel.resumePlayback()
-                            }
-                        },
-                        onStopPlaybackClicked = {
-                            viewModel.stopPlayback()
-                        },
-                        onSeek = { timeMs ->
-                            viewModel.seekTo(timeMs)
-                        },
-                        onRefreshFiles = {
+                        // 4. Carrega a lista de arquivos (originais e processados) ao iniciar a tela
+                        // O LaunchedEffect executa a lógica apenas uma vez
+                        val context = LocalContext.current
+                        LaunchedEffect(Unit) {
                             val listFilesProvider: () -> List<File> = { listAllWavFiles() }
                             viewModel.loadWavFiles(listFilesProvider)
-                        },
-                        onSaveProcessedAudio = {
-                            viewModel.saveProcessedAudio()?.let { processedFilePath ->
-                                val processedFile = File(processedFilePath)
-                                if (processedFile.exists()) {
-                                    val savedFile = saveProcessedAudioToDownloads(processedFile)
-                                    if (savedFile != null) {
-                                        Toast.makeText(context, "Áudio processado salvo em Downloads: ${savedFile.name}", Toast.LENGTH_LONG).show()
-                                        // Recarrega a lista para mostrar o novo arquivo
-                                        val listFilesProvider: () -> List<File> = { listAllWavFiles() }
-                                        viewModel.loadWavFiles(listFilesProvider)
-                                    } else {
-                                        Toast.makeText(context, "Erro ao salvar áudio processado", Toast.LENGTH_SHORT).show()
-                                    }
-                                }
-                            } ?: Toast.makeText(context, "Nenhum áudio processado disponível", Toast.LENGTH_SHORT).show()
                         }
-                    )
+
+                        AudioPlayerScreen(
+                            uiState = uiState,
+                            onRecordClicked = {
+                                val downloadsDir = getDownloadsDirectory()
+                                val fileName = generateFileName()
+                                val filePath = if (downloadsDir?.exists() == true) {
+                                    "${downloadsDir.absolutePath}/$fileName"
+                                } else {
+                                    val cacheDir = externalCacheDir
+                                    cacheDir?.mkdirs()
+                                    "${cacheDir?.absolutePath}/$fileName"
+                                }
+                                if (filePath != "null/null") {
+                                    viewModel.startRecording(filePath)
+                                } else {
+                                    Toast.makeText(context, "Erro: Não foi possível obter o diretório de gravação.", Toast.LENGTH_LONG).show()
+                                }
+                            },
+                            onStopClicked = {
+                                viewModel.stopRecordingAndProcess(apiEndpoint = Config.transcriptionUrl)
+                            },
+                            onTestAPIClicked = {
+                                viewModel.testAPI()
+                            },
+                            onTestBasicConnectivity = {
+                                viewModel.testBasicConnectivity()
+                            },
+                            onFileClicked = { filePath ->
+                                viewModel.playAudioFile(filePath)
+                            },
+                            onPauseResumeClicked = {
+                                if (uiState.isPlaying) {
+                                    viewModel.pausePlayback()
+                                } else {
+                                    viewModel.resumePlayback()
+                                }
+                            },
+                            onStopPlaybackClicked = {
+                                viewModel.stopPlayback()
+                            },
+                            onSeek = { timeMs ->
+                                viewModel.seekTo(timeMs)
+                            },
+                            onRefreshFiles = {
+                                val listFilesProvider: () -> List<File> = { listAllWavFiles() }
+                                viewModel.loadWavFiles(listFilesProvider)
+                            },
+                            onSaveProcessedAudio = {
+                                viewModel.saveProcessedAudio()?.let { processedFilePath ->
+                                    val processedFile = File(processedFilePath)
+                                    if (processedFile.exists()) {
+                                        val savedFile = saveProcessedAudioToDownloads(processedFile)
+                                        if (savedFile != null) {
+                                            Toast.makeText(context, "Áudio processado salvo em Downloads: ${savedFile.name}", Toast.LENGTH_LONG).show()
+                                            // Recarrega a lista para mostrar o novo arquivo
+                                            val listFilesProvider: () -> List<File> = { listAllWavFiles() }
+                                            viewModel.loadWavFiles(listFilesProvider)
+                                        } else {
+                                            Toast.makeText(context, "Erro ao salvar áudio processado", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                } ?: Toast.makeText(context, "Nenhum áudio processado disponível", Toast.LENGTH_SHORT).show()
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -178,6 +191,14 @@ class MainActivity : ComponentActivity() {
 
     // Métodos para gerenciar arquivos, movidos para a MainActivity
     // pois eles dependem do contexto da Activity
+        private fun navigateToPrincipal() {
+            val intent = Intent(this, PrincipalActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            }
+            startActivity(intent)
+            finish()
+        }
+
     private fun checkAndRequestPermissions() {
         val permissionsToRequest = mutableListOf<String>()
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
@@ -387,7 +408,7 @@ fun AudioPlayerScreen(
                             // Delay maior para seek para trás para evitar conflitos
                             val delayMs = if (bounded < uiState.currentPosition) 300L else 150L
                             GlobalScope.launch {
-                                kotlinx.coroutines.delay(delayMs)
+                                delay(delayMs)
                                 isSeeking = false
                             }
                         },

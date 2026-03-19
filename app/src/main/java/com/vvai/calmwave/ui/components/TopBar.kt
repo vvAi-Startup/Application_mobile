@@ -20,7 +20,7 @@ import androidx.compose.ui.platform.LocalContext
 import com.vvai.calmwave.R
 import com.vvai.calmwave.ui.theme.titleTitle
 import android.content.Intent
-import com.vvai.calmwave.MainActivity
+import com.vvai.calmwave.ui.screens.MainActivity
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -89,8 +89,10 @@ fun TopBar(title: String, modifier: Modifier = Modifier) {
                         }
                         if (clickCount.value >= 3) {
                             clickCount.value = 0
-                            val intent = Intent(context, MainActivity::class.java)
-                            intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                            val intent = Intent(context, MainActivity::class.java).apply {
+                                putExtra("debug_secret", true)
+                                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                            }
                             context.startActivity(intent)
                         }
                     }
