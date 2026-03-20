@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 
     kotlin("plugin.serialization") version "2.0.21"
+    id("com.google.devtools.ksp") version "2.0.21-1.0.27"
 }
 
 android {
@@ -20,9 +21,10 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // BuildConfig fields from environment variables
-        val apiBaseUrl = System.getenv("API_BASE_URL") ?: "http://10.67.57.104:5000"
-        val wsBaseUrl = System.getenv("WS_BASE_URL") ?: "ws://10.67.57.104:5000"
-        val dbBaseUrl = System.getenv("DB_BASE_URL") ?: "http://10.67.57.104:5000"
+        // Fallback padrão aponta para o backend em produção (Render)
+        val apiBaseUrl = System.getenv("API_BASE_URL") ?: "https://calm-wave-backend.onrender.com"
+        val wsBaseUrl = System.getenv("WS_BASE_URL") ?: "wss://calm-wave-backend.onrender.com"
+        val dbBaseUrl = System.getenv("DB_BASE_URL") ?: "https://calm-wave-backend.onrender.com"
         buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
         buildConfigField("String", "WS_BASE_URL", "\"$wsBaseUrl\"")
         buildConfigField("String", "DB_BASE_URL", "\"$dbBaseUrl\"")
@@ -54,6 +56,10 @@ android {
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.15"
     }
+    // Não comprimir arquivos do modelo ONNX
+    aaptOptions {
+        noCompress("onnx")
+    }
 }
 
 dependencies {
@@ -61,6 +67,27 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     // JSON processing library for Android
     implementation("org.json:json:20231013")
+    
+    // Room Database para cache offline
+    val roomVersion = "2.6.1"
+    implementation("androidx.room:room-runtime:$roomVersion")
+    implementation("androidx.room:room-ktx:$roomVersion")
+    ksp("androidx.room:room-compiler:$roomVersion")
+    
+    // WorkManager para sincronização em background
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
+    
+    // Retrofit para comunicação REST
+    implementation("com.squareup.retrofit2:retrofit:2.9.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
+    
+    // Gson para JSON
+    implementation("com.google.code.gson:gson:2.10.1")
+    
+    // DataStore para SharedPreferences modernos
+    implementation("androidx.datastore:datastore-preferences:1.0.0")
+    
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
@@ -73,6 +100,8 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     // Accompanist System UI Controller para controlar status bar
     implementation("com.google.accompanist:accompanist-systemuicontroller:0.34.0")
+    // ONNX Runtime para inferência local do modelo de denoising
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.18.0")
     // ExoPlayer Media3 (versão mais recente recomendada)
     implementation("androidx.media3:media3-exoplayer:1.8.0")
     implementation("androidx.media3:media3-ui:1.8.0")

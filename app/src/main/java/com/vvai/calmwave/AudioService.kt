@@ -10,6 +10,8 @@ import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
 import android.media.AudioTrack.MODE_STREAM
+import com.vvai.calmwave.data.remote.ApiClient
+import com.vvai.calmwave.util.ResilientDns
 import kotlinx.coroutines.*
 import kotlinx.coroutines.Job
 import okhttp3.OkHttpClient
@@ -170,6 +172,7 @@ class AudioService {
     }
     private val CHUNK_SIZE = 4096
     private val client = OkHttpClient.Builder()
+        .dns(ResilientDns)
         .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
         .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
         .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
@@ -206,6 +209,109 @@ class AudioService {
         audioManager?.let { manager ->
             manager.stopBluetoothSco()
             manager.isBluetoothScoOn = false
+        }
+    }
+
+    // ========================================================================
+    //  Streaming playback em tempo real (para denoising offline)
+    // ========================================================================
+
+    private var streamingTrack: AudioTrack? = null
+    private var streamingOutputStream: FileOutputStream? = null
+    private var streamingOutputFile: File? = null
+    private var streamingDataBytes: Long = 0
+
+    /**
+     * Inicializa o AudioTrack para streaming e prepara um arquivo de saída WAV.
+     * Chamado no início da gravação, antes dos chunks serem recebidos.
+     */
+    fun initStreamingPlayback(context: Context) {
+        // Para qualquer streaming anterior
+        stopStreamingPlayback()
+
+        val bufferSize = AudioTrack.getMinBufferSize(sampleRate, channelConfig, audioFormat)
+        // Aumenta buffer para 4x o mínimo para evitar underruns e picotamento
+        val optimizedBufferSize = (bufferSize * 4).coerceAtLeast(32768)
+        streamingTrack = AudioTrack(
+            AudioManager.STREAM_MUSIC,
+            sampleRate,
+            channelConfig,
+            audioFormat,
+            optimizedBufferSize,
+            MODE_STREAM
+        )
+        if (streamingTrack?.state != AudioTrack.STATE_INITIALIZED) {
+            android.util.Log.e("AudioService", "Falha ao inicializar AudioTrack para streaming")
+            streamingTrack?.release()
+            streamingTrack = null
+            return
+        }
+        streamingTrack?.play()
+
+        // Prepara arquivo de saída para salvar o áudio processado
+        val outDir = context.getExternalFilesDir(null)
+        streamingOutputFile = File(outDir, "denoised_${System.currentTimeMillis()}.wav")
+        streamingOutputStream = FileOutputStream(streamingOutputFile!!)
+        writeWavHeader(streamingOutputStream!!)
+        streamingDataBytes = 0
+
+        android.util.Log.d("AudioService", "Streaming playback inicializado → ${streamingOutputFile?.name}")
+    }
+
+    /**
+     * Toca e salva um chunk PCM processado (16-bit, mono, 16kHz).
+     * Thread-safe — pode ser chamado de qualquer thread.
+     */
+    fun streamProcessedChunk(pcmData: ByteArray) {
+        // Toca no alto-falante
+        streamingTrack?.write(pcmData, 0, pcmData.size)
+
+        // Salva no arquivo de saída
+        try {
+            streamingOutputStream?.write(pcmData)
+            streamingDataBytes += pcmData.size
+        } catch (e: Exception) {
+            android.util.Log.e("AudioService", "Erro ao salvar chunk streaming: ${e.message}")
+        }
+    }
+
+    /**
+     * Finaliza o streaming: para o AudioTrack e fecha o arquivo WAV (com header correto).
+     * @return caminho do arquivo WAV processado, ou null se nada foi salvo
+     */
+    fun stopStreamingPlayback(): String? {
+        try { streamingTrack?.stop() } catch (_: Exception) {}
+        try { streamingTrack?.release() } catch (_: Exception) {}
+        streamingTrack = null
+
+        try {
+            streamingOutputStream?.flush()
+            streamingOutputStream?.close()
+        } catch (_: Exception) {}
+        streamingOutputStream = null
+
+        val outputFile = streamingOutputFile
+        streamingOutputFile = null
+
+        if (outputFile != null && streamingDataBytes > 0) {
+            try {
+                val raf = java.io.RandomAccessFile(outputFile, "rw")
+                val dataSize = streamingDataBytes.toInt()
+                raf.seek(4)
+                raf.writeInt(java.lang.Integer.reverseBytes(36 + dataSize))
+                raf.seek(40)
+                raf.writeInt(java.lang.Integer.reverseBytes(dataSize))
+                raf.close()
+                android.util.Log.i("AudioService", "✅ Streaming WAV finalizado: ${outputFile.absolutePath} (${streamingDataBytes} bytes)")
+            } catch (e: Exception) {
+                android.util.Log.e("AudioService", "Erro ao finalizar WAV streaming: ${e.message}")
+            }
+            streamingDataBytes = 0
+            return outputFile.absolutePath
+        } else {
+            outputFile?.delete()
+            streamingDataBytes = 0
+            return null
         }
     }
 
@@ -375,13 +481,6 @@ class AudioService {
                                         if (response.isSuccessful) {
                                             val responseBody = response.body?.string()
                                             println("Chunk $chunkIndex enviado com sucesso. Resposta: $responseBody")
-                                            
-                                            // Se a API retornar áudio processado, reproduz
-                                            val processedAudioBytes = response.body?.bytes()
-                                            if (processedAudioBytes != null && processedAudioBytes.isNotEmpty()) {
-                                                audioTrack?.write(processedAudioBytes, 0, processedAudioBytes.size)
-                                                println("Áudio processado reproduzido para chunk $chunkIndex")
-                                            }
                                         } else {
                                             println("Falha ao enviar chunk $chunkIndex: ${response.code}")
                                         }
@@ -435,12 +534,6 @@ class AudioService {
                                 if (response.isSuccessful) {
                                     val responseBody = response.body?.string()
                                     println("Chunk final $chunkIndex enviado com sucesso. Resposta: $responseBody")
-                                    
-                                    val processedAudioBytes = response.body?.bytes()
-                                    if (processedAudioBytes != null && processedAudioBytes.isNotEmpty()) {
-                                        audioTrack?.write(processedAudioBytes, 0, processedAudioBytes.size)
-                                        println("Áudio processado reproduzido para chunk final $chunkIndex")
-                                    }
                                 } else {
                                     println("Falha ao enviar chunk final $chunkIndex: ${response.code}")
                                 }
@@ -764,23 +857,25 @@ class AudioService {
                 val requestBody = okhttp3.MultipartBody.Builder()
                     .setType(okhttp3.MultipartBody.FORM)
                     .addFormDataPart(
-                        "audio",
+                        "file",
                         "chunk_${chunkIndex}.wav",
                         okhttp3.RequestBody.create(
                             "audio/wav".toMediaType(),
                             tempFile
                         )
                     )
+                    .addFormDataPart("device_origin", "Android")
                     .build()
-                
-                val request = Request.Builder()
+
+                val requestBuilder = Request.Builder()
                     .url(apiEndpoint)
-                    .addHeader("X-Session-ID", sessionId)
-                    .addHeader("X-Chunk-Index", chunkIndex.toString())
-                    .addHeader("X-Chunk-Timestamp", System.currentTimeMillis().toString())
-                    .addHeader("X-Chunk-Size", chunkData.size.toString())
                     .post(requestBody)
-                    .build()
+
+                ApiClient.getAuthToken()?.let {
+                    requestBuilder.addHeader("Authorization", "Bearer $it")
+                }
+
+                val request = requestBuilder.build()
 
                 println("Fazendo requisição para: ${request.url}")
                 println("Headers: ${request.headers}")
@@ -792,13 +887,6 @@ class AudioService {
                     if (response.isSuccessful) {
                         val responseBody = response.body?.string()
                         println("Chunk $chunkIndex processado com sucesso. Resposta: $responseBody")
-                        
-                        // Se a API retornar áudio processado, reproduz
-                        val processedAudioBytes = response.body?.bytes()
-                        if (processedAudioBytes != null && processedAudioBytes.isNotEmpty()) {
-                            audioTrack?.write(processedAudioBytes, 0, processedAudioBytes.size)
-                            println("Áudio processado reproduzido para chunk $chunkIndex")
-                        }
                     } else {
                         val errorBody = response.body?.string()
                         println("Falha ao enviar chunk $chunkIndex: ${response.code} - $errorBody")
@@ -826,8 +914,8 @@ class AudioService {
         buffer.putInt(16) // Tamanho do subchunk 1
         buffer.putShort(1) // Formato de áudio (1 = PCM)
         buffer.putShort(1) // Número de canais (mono)
-        buffer.putInt(44100) // Taxa de amostragem
-        buffer.putInt(44100 * 2) // Byte rate
+        buffer.putInt(16000) // Taxa de amostragem (16kHz - consistente com gravação)
+        buffer.putInt(16000 * 2) // Byte rate
         buffer.putShort(2) // Block align
         buffer.putShort(16) // Bits por amostra
         buffer.putInt(0x61746164) // "data"
@@ -842,8 +930,8 @@ class AudioService {
             println("=== TESTE DE CONECTIVIDADE BÁSICA ===")
             println("Endpoint base: $apiEndpoint")
             
-            // Deriva /health a partir do upload informado
-            val baseUrl = apiEndpoint.replace("/upload", "/health")
+            // Usa endpoint de health oficial da API
+            val baseUrl = Config.healthUrl
             println("Testando conectividade em: $baseUrl")
             
             val request = Request.Builder()
@@ -866,13 +954,14 @@ class AudioService {
                 val responseBody = response.body?.string()
                 println("Corpo da resposta: $responseBody")
                 
-                if (response.isSuccessful) {
-                    println("✅ SERVIDOR RESPONDEU!")
+                val reachable = response.code in 200..499
+                if (reachable) {
+                    println("✅ SERVIDOR RESPONDEU (conectividade OK)")
                     return@withContext true
-                } else {
-                    println("❌ SERVIDOR RESPONDEU COM ERRO - Código: ${response.code}")
-                    return@withContext false
                 }
+
+                println("❌ FALHA DE CONECTIVIDADE - Código: ${response.code}")
+                return@withContext false
             }
         } catch (e: Exception) {
             println("=== ERRO NA CONECTIVIDADE BÁSICA ===")
@@ -905,24 +994,25 @@ class AudioService {
                 val requestBody = okhttp3.MultipartBody.Builder()
                     .setType(okhttp3.MultipartBody.FORM)
                     .addFormDataPart(
-                        "audio",
+                        "file",
                         "test_audio.wav",
                         okhttp3.RequestBody.create(
                             "audio/wav".toMediaType(),
                             tempFile
                         )
                     )
+                    .addFormDataPart("device_origin", "Android")
                     .build()
-                
-                val request = Request.Builder()
+
+                val requestBuilder = Request.Builder()
                     .url(apiEndpoint)
-                    .addHeader("X-Session-ID", "test-session-${System.currentTimeMillis()}")
-                    .addHeader("X-Chunk-Index", "0")
-                    .addHeader("X-Chunk-Timestamp", System.currentTimeMillis().toString())
-                    .addHeader("X-Chunk-Size", testData.size.toString())
-                    .addHeader("X-Test-Mode", "true")
                     .post(requestBody)
-                    .build()
+
+                ApiClient.getAuthToken()?.let {
+                    requestBuilder.addHeader("Authorization", "Bearer $it")
+                }
+
+                val request = requestBuilder.build()
 
                 println("Requisição preparada:")
                 println("  URL: ${request.url}")
@@ -945,13 +1035,14 @@ class AudioService {
                     val responseBody = response.body?.string()
                     println("Corpo da resposta: $responseBody")
                     
-                    if (response.isSuccessful) {
-                        println("✅ CONEXÃO BEM-SUCEDIDA!")
+                    val reachable = response.code in 200..499
+                    if (reachable) {
+                        println("✅ CONEXÃO BEM-SUCEDIDA (servidor acessível)")
                         return@withContext true
-                    } else {
-                        println("❌ FALHA NA CONEXÃO - Código: ${response.code}")
-                        return@withContext false
                     }
+
+                    println("❌ FALHA NA CONEXÃO - Código: ${response.code}")
+                    return@withContext false
                 }
             } finally {
                 // Remove o arquivo temporário
