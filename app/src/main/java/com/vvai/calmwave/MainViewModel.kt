@@ -85,6 +85,7 @@ class MainViewModel(
 
     override fun onCleared() {
         super.onCleared()
+        RecordingForegroundService.stop(context.applicationContext)
         localDenoiser.release()
     }
 
@@ -94,6 +95,9 @@ class MainViewModel(
         currentRecordingPath = filePath
         recordingDone = CompletableDeferred()
         recordingStartTime = System.currentTimeMillis()
+
+        // Mantém o processo em prioridade de foreground durante gravação/processamento
+        RecordingForegroundService.start(context.applicationContext)
 
         viewModelScope.launch(Dispatchers.IO) {
             // Registra evento de início de gravação
@@ -189,6 +193,7 @@ class MainViewModel(
                     statusText = "Erro ao iniciar gravação: ${e.message}"
                 )
                 audioService.stopBluetoothSco()
+                RecordingForegroundService.stop(context.applicationContext)
             } finally {
                 // Fecha o canal — sinaliza à coroutine consumidora que não há mais dados
                 pcmChannel.close()
@@ -214,9 +219,6 @@ class MainViewModel(
                 statusText = "Finalizando processamento...",
                 currentPosition = 0
             )
-            
-            var errorOccurred = false
-            var errorMessage: String? = null
             
             try {
                 wavRecorder.stopRecording()
@@ -270,8 +272,7 @@ class MainViewModel(
                     )
                     Log.i("MainViewModel", "✅ Denoising streaming concluído: $processedPath")
                 } else if (currentRecordingPath != null) {
-                    errorOccurred = true
-                    errorMessage = "Modelo IA indisponível"
+                    val errorMessage = "Modelo IA indisponível"
                     
                     // Registra falha
                     val metrics = AudioProcessingMetrics(
@@ -294,8 +295,7 @@ class MainViewModel(
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
-                errorOccurred = true
-                errorMessage = e.message
+                val errorMessage = e.message
                 
                 // Registra erro
                 val metrics = AudioProcessingMetrics(
@@ -317,6 +317,7 @@ class MainViewModel(
                 _uiState.value = _uiState.value.copy(
                     isProcessing = false
                 )
+                RecordingForegroundService.stop(context.applicationContext)
             }
         }
     }
@@ -338,27 +339,17 @@ class MainViewModel(
     }
 
     fun saveProcessedAudio(): String? {
-        println("=== SALVANDO ÁUDIO PROCESSADO ===")
         val processedFile = audioService.getLatestProcessedFile()
-        println("Arquivo processado obtido: ${processedFile?.absolutePath}")
         
         return processedFile?.let { file ->
-            println("Arquivo existe: ${file.exists()}")
-            println("Tamanho do arquivo: ${file.length()} bytes")
-            
             // Só tenta salvar se o arquivo processado existe e tem conteúdo
             if (file.exists() && file.length() > 44) { // 44 bytes = cabeçalho WAV mínimo
-                println("✅ Arquivo processado válido - salvando...")
                 // Esta função será chamada pela MainActivity para salvar no Downloads
                 onProcessedAudioSaved?.invoke(file) // Chama o callback com o arquivo processado
                 return file.absolutePath
             } else {
-                println("❌ Arquivo processado inválido ou muito pequeno")
                 null
             }
-        } ?: run {
-            println("❌ Nenhum arquivo processado encontrado")
-            null
         }
     }
 
@@ -445,7 +436,7 @@ class MainViewModel(
                 delay(50)
                 audioService.seekTo(boundedTime, viewModelScope)
             } catch (e: Exception) {
-                println("Erro durante seek no ViewModel: ${e.message}")
+                Log.e("MainViewModel", "Erro durante seek no ViewModel", e)
                 e.printStackTrace()
             }
         }
@@ -508,7 +499,7 @@ class MainViewModel(
 
                     delay(500) // Atualiza a cada 500ms para melhor responsividade
                 } catch (e: Exception) {
-                    println("Erro no monitor de reprodução: ${e.message}")
+                    Log.e("MainViewModel", "Erro no monitor de reprodução", e)
                     e.printStackTrace()
                     delay(2000) // Em caso de erro, aguarda mais tempo
                 }

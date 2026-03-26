@@ -25,6 +25,7 @@
 - [Como configurar](#-como-configurar)
 - [Como usar o aplicativo](#-como-usar-o-aplicativo)
 - [Como o aplicativo funciona](#-como-o-aplicativo-funciona)
+- [Mapa rápido de telas (dev)](#-mapa-rápido-de-telas-dev)
 - [Onde encontrar mais informações](#-onde-encontrar-mais-informações)
 - [Próximos passos](#-próximos-passos)
 - [Licença e contato](#-licença-e-contato)
@@ -54,6 +55,29 @@ O aplicativo foi desenvolvido pensando em ser simples e fácil de usar, com uma 
 ---
 
 ## 🚀 O que o aplicativo faz
+
+---
+
+## 🧭 Mapa rápido de telas (dev)
+
+Para facilitar manutenção e mudanças pontuais em UI/fluxo:
+
+- **Splash / entrada**: app/src/main/java/com/vvai/calmwave/SplashActivity.kt
+- **Tela principal (Início)**: app/src/main/java/com/vvai/calmwave/PrincipalActivity.kt
+- **Tela de gravação**: app/src/main/java/com/vvai/calmwave/GravarActivity.kt
+- **Tela de playlists/áudios**: app/src/main/java/com/vvai/calmwave/PlaylistActivity.kt
+- **Tela utilitária de player/diagnóstico**: app/src/main/java/com/vvai/calmwave/MainActivity.kt
+
+Camadas de suporte principais:
+
+- **Estado e regras da gravação/processamento**: app/src/main/java/com/vvai/calmwave/MainViewModel.kt
+- **Gravação WAV por chunks**: app/src/main/java/com/vvai/calmwave/WavRecorder.kt
+- **Processamento local offline (denoise)**: app/src/main/java/com/vvai/calmwave/LocalAudioDenoiser.kt
+- **Reprodução/streaming local de áudio**: app/src/main/java/com/vvai/calmwave/AudioService.kt
+- **Cache local + sync quando online**: app/src/main/java/com/vvai/calmwave/data/repository/AnalyticsRepository.kt
+- **Sincronização em background (WorkManager)**: app/src/main/java/com/vvai/calmwave/workers/SyncAnalyticsWorker.kt
+
+> Regra de arquitetura mantida: gravação/processamento continuam funcionando offline em tempo real, com cache local e sincronização para API quando houver conectividade.
 
 ### 1. 🎙️ Gravar Áudio com Qualidade
 

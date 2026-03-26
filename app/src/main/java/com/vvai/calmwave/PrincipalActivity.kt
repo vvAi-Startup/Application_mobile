@@ -9,8 +9,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -311,9 +309,34 @@ fun StatusCard(title: String, color: Color, icon: androidx.compose.ui.graphics.v
 
 @Composable
 fun PlaylistsCarousel(playlists: List<PlaylistItem>, modifier: Modifier = Modifier) {
-    LazyRow(modifier = modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        items(playlists) { item ->
-            PlaylistCard(item = item)
+    val rows = playlists.chunked(3)
+
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        rows.forEach { rowItems ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                rowItems.forEach { item ->
+                    PlaylistCard(
+                        item = item,
+                        modifier = Modifier
+                            .weight(1f)
+                            .aspectRatio(1f)
+                    )
+                }
+
+                repeat(3 - rowItems.size) {
+                    Spacer(
+                        modifier = Modifier
+                            .weight(1f)
+                            .aspectRatio(1f)
+                    )
+                }
+            }
         }
     }
 }
@@ -321,8 +344,7 @@ fun PlaylistsCarousel(playlists: List<PlaylistItem>, modifier: Modifier = Modifi
 @Composable
 fun PlaylistCard(item: PlaylistItem, modifier: Modifier = Modifier) {
     Surface(
-        modifier = modifier
-            .size(width = 140.dp, height = 140.dp),
+        modifier = modifier,
         shape = RoundedCornerShape(12.dp),
         color = Color.Transparent
     ) {
@@ -361,27 +383,5 @@ fun RecordButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
     ) {
         Text(text = "Iniciar Gravação", color = Color.White)
 
-    }
-}
-
-@Composable
-fun RecordingItem(title: String, modifier: Modifier = Modifier) {
-    Surface(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(54.dp),
-        tonalElevation = 2.dp,
-        shape = RoundedCornerShape(8.dp),
-        color = Color(0xFFF3F6F7)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 12.dp)) {
-            IconButton(onClick = { /* tocar gravação */ }) {
-                Icon(
-                    imageVector = Icons.Filled.PlayArrow,
-                    contentDescription = "Play"
-                )
-            }
-            Text(text = title, modifier = Modifier.weight(1f))
-        }
     }
 }

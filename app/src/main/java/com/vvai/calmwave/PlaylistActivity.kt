@@ -31,16 +31,36 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.border
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import com.vvai.calmwave.components.BottomNavigationBar
 import com.vvai.calmwave.components.TopBar
 import com.vvai.calmwave.ui.components.PlaylistComponents.PlaylistCard
+import com.vvai.calmwave.ui.components.PlaylistComponents.ColorWheelPicker
 import com.vvai.calmwave.ui.components.PlaylistComponents.PlaylistTabs
 import com.vvai.calmwave.ui.components.PlaylistComponents.PlaylistSelectionDialog
 import com.vvai.calmwave.ui.components.PlaylistComponents.FilterSheet
 import java.io.File
 import com.vvai.calmwave.R
 import com.vvai.calmwave.ui.theme.CalmWaveTheme
+
+private const val PREFS_PLAYLISTS = "playlists"
+private const val PREFS_AUDIO_TO_PLAYLIST_MAP = "audioToPlaylistMap"
+
+private val DEFAULT_PLAYLIST_COLORS = listOf(
+    Color(0xFF6FAF9E),
+    Color(0xFF4B5563),
+    Color(0xFFF29345),
+    Color(0xFF2DC9C6),
+    Color(0xFF8EEAE7)
+)
+
+private data class PlaylistEntry(
+    val id: Int,
+    var title: String,
+    val subtitle: String,
+    val color: Color
+)
 
 class PlaylistActivity : ComponentActivity() {
     private lateinit var exoPlayerAudioPlayer: ExoPlayerAudioPlayer
@@ -63,22 +83,9 @@ class PlaylistActivity : ComponentActivity() {
             var selectedTab by remember { mutableStateOf("Playlists") }
             var searchText by remember { mutableStateOf("") }
 
-            data class PlaylistItem(
-                val id: Int,
-                var title: String,
-                val subtitle: String,
-                val color: Color
-            )
-
-            val playlists = remember { mutableStateListOf<PlaylistItem>() }
+            val playlists = remember { mutableStateListOf<PlaylistEntry>() }
             // cores disponíveis para criação de playlist
-            val availableColors = listOf(
-                Color(0xFF6FAF9E),
-                Color(0xFF4B5563),
-                Color(0xFFF29345),
-                Color(0xFF2DC9C6),
-                Color(0xFF8EEAE7)
-            )
+            val availableColors = DEFAULT_PLAYLIST_COLORS
             val audioToPlaylistMap = remember { mutableStateMapOf<String, String>() }
             val favoriteIds = remember { mutableStateListOf<Int>() }
             var onlyFavorites by remember { mutableStateOf(false) }
@@ -98,23 +105,23 @@ class PlaylistActivity : ComponentActivity() {
                 val playlistJson = playlists.joinToString("||") {
                     listOf(it.id, it.title, it.subtitle, it.color.value).joinToString("|")
                 }
-                editor.putString("playlists", playlistJson)
+                editor.putString(PREFS_PLAYLISTS, playlistJson)
                 val audioMapJson =
                     audioToPlaylistMap.entries.joinToString("||") { it.key + "|" + it.value }
-                editor.putString("audioToPlaylistMap", audioMapJson)
+                editor.putString(PREFS_AUDIO_TO_PLAYLIST_MAP, audioMapJson)
                 editor.apply()
             }
 
             fun loadPlaylists() {
                 val prefs = context.getSharedPreferences("playlists_prefs", 0)
-                val playlistJson = prefs.getString("playlists", null)
+                val playlistJson = prefs.getString(PREFS_PLAYLISTS, null)
                 playlists.clear()
                 if (!playlistJson.isNullOrBlank()) {
                     playlistJson.split("||").forEach {
                         val parts = it.split("|")
                         if (parts.size == 4) {
                             playlists.add(
-                                PlaylistItem(
+                                PlaylistEntry(
                                     parts[0].toInt(),
                                     parts[1],
                                     parts[2],
@@ -126,7 +133,7 @@ class PlaylistActivity : ComponentActivity() {
                 } else {
                     // não carregar playlists padrão — começar com lista vazia e instruir o usuário a criar
                 }
-                val audioMapJson = prefs.getString("audioToPlaylistMap", null)
+                val audioMapJson = prefs.getString(PREFS_AUDIO_TO_PLAYLIST_MAP, null)
                 audioToPlaylistMap.clear()
                 if (!audioMapJson.isNullOrBlank()) {
                     audioMapJson.split("||").forEach {
@@ -230,259 +237,45 @@ class PlaylistActivity : ComponentActivity() {
                                 } else {
                                     wavFiles
                                 }
-                                LazyColumn(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 16.dp)
-                                        .weight(1f)
-                                ) {
-                                    items(
-                                        items = filteredWavFiles,
-                                        key = { it.absolutePath }
-                                    ) { file: File ->
-                                        // Remove local state and use global state based on file path
-                                        val isMenuOpen = menuOpenedForFilePath == file.absolutePath
-                                        val durationMs =
-                                            audioDurationCache.getOrPut(file.absolutePath) {
-                                                val player = ExoPlayerAudioPlayer(this@PlaylistActivity)
-                                                player.initializeCustom(file.absolutePath)
-                                                val dur = player.getDuration()
-                                                player.release()
-                                                if (dur > 0 && dur < 1000 * 60 * 60 * 10) dur else -1L
-                                            }
-                                        val playlistName = audioToPlaylistMap[file.absolutePath]
-                                        val playlistObj = playlists.find { it.title == playlistName }
-                                        val playlistColor = playlistObj?.color ?: Color(0xFF8EEAE7)
-                                        val textColor =
-                                            if (playlistObj != null) Color.White else Color.Black
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(vertical = 4.dp)
-                                                .background(
-                                                    playlistColor,
-                                                    shape = MaterialTheme.shapes.medium
-                                                )
-                                                .padding(12.dp)
-                                                .clickable {
-                                                    selectedAudioFile = file
-                                                    showModal = true
-                                                },
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Column(modifier = Modifier.weight(1f)) {
-                                                if (!playlistName.isNullOrBlank()) {
-                                                    Text(
-                                                        text = playlistName,
-                                                        color = textColor,
-                                                        style = MaterialTheme.typography.bodySmall
-                                                    )
-                                                }
-                                                Text(
-                                                    text = file.name,
-                                                    fontWeight = FontWeight.Medium,
-                                                    color = textColor
-                                                )
-                                            }
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Text(
-                                                text = if (durationMs > 0) formatMillis(durationMs) else "--:--",
-                                                color = textColor.copy(alpha = 0.85f),
-                                                style = MaterialTheme.typography.bodySmall
-                                            )
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            IconButton(onClick = { 
-                                                menuOpenedForFilePath = if (isMenuOpen) null else file.absolutePath
-                                                println("DEBUG: Menu button clicked for ${file.name}, isMenuOpen: $isMenuOpen -> ${!isMenuOpen}")
-                                            }) {
-                                                Icon(
-                                                    imageVector = Icons.Filled.MoreVert,
-                                                    contentDescription = "Opções"
-                                                )
-                                            }
-                                            DropdownMenu(
-                                                expanded = isMenuOpen,
-                                                onDismissRequest = { 
-                                                    menuOpenedForFilePath = null
-                                                    println("DEBUG: Menu dismissed for ${file.name}")
-                                                }
-                                            ) {
-                                                DropdownMenuItem(
-                                                    text = { Text("Excluir") },
-                                                    onClick = {
-                                                        menuOpenedForFilePath = null
-                                                        println("DEBUG: Excluir clicked for ${file.name}")
-                                                        // TODO: Add audio delete logic
-                                                    }
-                                                )
-                                                DropdownMenuItem(
-                                                    text = { Text("Mover para playlist") },
-                                                    onClick = {
-                                                        menuOpenedForFilePath = null
-                                                        showPlaylistDialogForAudio = file
-                                                        println("DEBUG: Mover para playlist clicked for ${file.name}")
-                                                    }
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
+                                AudioTabContent(
+                                    filteredWavFiles = filteredWavFiles,
+                                    playlists = playlists,
+                                    audioToPlaylistMap = audioToPlaylistMap,
+                                    audioDurationCache = audioDurationCache,
+                                    menuOpenedForFilePath = menuOpenedForFilePath,
+                                    onMenuOpenedChange = { menuOpenedForFilePath = it },
+                                    onAudioSelected = { file ->
+                                        selectedAudioFile = file
+                                        showModal = true
+                                    },
+                                    onMoveToPlaylist = { file ->
+                                        showPlaylistDialogForAudio = file
+                                    },
+                                    resolveAudioDuration = { filePath ->
+                                        val player = ExoPlayerAudioPlayer(this@PlaylistActivity)
+                                        player.initializeCustom(filePath)
+                                        val duration = player.getDuration()
+                                        player.release()
+                                        if (duration > 0 && duration < 1000 * 60 * 60 * 10) duration else -1L
+                                    },
+                                    formatDuration = { durationMs -> formatMillis(durationMs) }
+                                )
                             } else {
-                                val filteredBySearch =
-                                    if (searchText.isBlank()) playlists else playlists.filter {
-                                        it.title.contains(
-                                            searchText,
-                                            ignoreCase = true
-                                        )
+                                PlaylistsTabContent(
+                                    playlists = playlists,
+                                    audioToPlaylistMap = audioToPlaylistMap,
+                                    favoriteIds = favoriteIds,
+                                    onlyFavorites = onlyFavorites,
+                                    searchText = searchText,
+                                    wavFiles = wavFiles,
+                                    availableColors = availableColors,
+                                    bottomBarTotalHeight = bottomBarTotalHeight,
+                                    onOpenAudiosByPlaylist = { selectedPlaylist ->
+                                        playlistFilter = selectedPlaylist
+                                        selectedTab = "Áudios"
+                                        onlyFavorites = false
                                     }
-                                val displayed =
-                                    if (onlyFavorites) filteredBySearch.filter { favoriteIds.contains(it.id) } else filteredBySearch
-                                var showAddDialog by remember { mutableStateOf(false) }
-                                var newPlaylistName by remember { mutableStateOf("") }
-                                var selectedColor by remember { mutableStateOf(availableColors.first()) }
-                                Box(Modifier.fillMaxSize()) {
-                                    if (displayed.isEmpty()) {
-                                        // tela vazia amigável para crianças
-                                        Column(
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .padding(horizontal = 24.dp),
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            verticalArrangement = Arrangement.Center
-                                        ) {
-                                            Image(
-                                                painter = painterResource(id = R.drawable.disc),
-                                                contentDescription = "Disco",
-                                                modifier = Modifier.size(120.dp)
-                                            )
-                                            Spacer(modifier = Modifier.height(12.dp))
-                                            Text(
-                                                text = "Está vazio!",
-                                                style = MaterialTheme.typography.titleLarge,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                            Spacer(modifier = Modifier.height(6.dp))
-                                            Text(
-                                                text = "Toque no + para criar uma playlist",
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                color = Color(0xFF6B6B6B)
-                                            )
-                                        }
-                                    } else {
-                                        LazyColumn(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(horizontal = 16.dp)
-                                                .fillMaxHeight(),
-                                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                                        ) {
-                                            items(displayed, key = { it.id }) { item ->
-                                                // subtitle agora calculado dinamicamente: audios atribuídos / total de áudios
-                                                PlaylistCard(
-                                                    title = item.title,
-                                                    subtitle = "${audioToPlaylistMap.values.count { it == item.title }}/${wavFiles.size} ÁUDIOS",
-                                                    color = item.color,
-                                                    isFavorite = favoriteIds.contains(item.id),
-                                                    onFavoriteToggle = {
-                                                        if (favoriteIds.contains(item.id)) favoriteIds.remove(
-                                                            item.id
-                                                        ) else favoriteIds.add(item.id)
-                                                    },
-                                                    onClick = {
-                                                        playlistFilter = item.title
-                                                        // Muda automaticamente para aba de Áudios
-                                                        selectedTab = "Áudios"
-                                                        onlyFavorites = false
-                                                    },
-                                                    onRename = { newName ->
-                                                        val idx = playlists.indexOfFirst { it.id == item.id }
-                                                        if (idx >= 0) {
-                                                            val oldName = playlists[idx].title
-                                                            playlists[idx] = playlists[idx].copy(title = newName)
-                                                            val updated = audioToPlaylistMap.mapValues { (k, v) -> if (v == oldName) newName else v }
-                                                            audioToPlaylistMap.clear()
-                                                            audioToPlaylistMap.putAll(updated)
-                                                        }
-                                                    },
-                                                    onDelete = {
-                                                        val playlistName = item.title
-                                                        playlists.removeAll { it.id == item.id }
-                                                        val toRemove = audioToPlaylistMap.filterValues { it == playlistName }.keys.toList()
-                                                        toRemove.forEach { audioToPlaylistMap.remove(it) }
-                                                    }
-                                                )
-                                            }
-                                        }
-                                    }
-                                    FloatingActionButton(
-                                        onClick = { showAddDialog = true },
-                                        containerColor = Color(0xFF2DC9C6),
-                                        contentColor = Color.White,
-                                        modifier = Modifier
-                                            .align(Alignment.BottomEnd)
-                                            .padding(end = 24.dp, bottom = bottomBarTotalHeight + 16.dp) // padding dinâmico para não sobrepor a BottomNavigationBar
-                                    ) {
-                                        Icon(Icons.Filled.Add, contentDescription = "Nova Playlist")
-                                    }
-                                    if (showAddDialog) {
-                                        AlertDialog(
-                                            onDismissRequest = { showAddDialog = false },
-                                            title = { Text("Nova Playlist") },
-                                            text = {
-                                                Column {
-                                                    OutlinedTextField(
-                                                        value = newPlaylistName,
-                                                        onValueChange = { newPlaylistName = it },
-                                                        label = { Text("Nome da playlist") }
-                                                    )
-                                                    Spacer(modifier = Modifier.height(12.dp))
-                                                    Text(text = "Escolha a cor:", style = MaterialTheme.typography.bodyMedium)
-                                                    Spacer(modifier = Modifier.height(8.dp))
-                                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                                        availableColors.forEach { c ->
-                                                            Box(
-                                                                modifier = Modifier
-                                                                    .size(36.dp)
-                                                                    .clip(CircleShape)
-                                                                    .background(c)
-                                                                    .border(
-                                                                        width = if (selectedColor == c) 3.dp else 1.dp,
-                                                                        color = if (selectedColor == c) Color.White else Color.Transparent,
-                                                                        shape = CircleShape
-                                                                    )
-                                                                    .clickable { selectedColor = c }
-                                                            )
-                                                        }
-                                                    }
-                                                }
-                                            },
-                                            confirmButton = {
-                                                TextButton(onClick = {
-                                                    if (newPlaylistName.isNotBlank()) {
-                                                        val nextId =
-                                                            (playlists.maxOfOrNull { it.id } ?: 0) + 1
-                                                        playlists.add(
-                                                            PlaylistItem(
-                                                                nextId,
-                                                                newPlaylistName,
-                                                                "${0}/${wavFiles.size} ÁUDIOS",
-                                                                selectedColor
-                                                            )
-                                                        )
-                                                        newPlaylistName = ""
-                                                        selectedColor = availableColors.first()
-                                                        showAddDialog = false
-                                                    }
-                                                }) { Text("Criar") }
-                                            },
-                                            dismissButton = {
-                                                TextButton(onClick = {
-                                                    showAddDialog = false
-                                                }) { Text("Cancelar") }
-                                            }
-                                        )
-                                    }
-                                }
+                                )
                             }
                         }
                         // Audio Player Modal (fixed at bottom, above nav bar)
@@ -860,17 +653,299 @@ class PlaylistActivity : ComponentActivity() {
                 }
             }
         }
-
-        fun onDestroy() {
-            super.onDestroy()
-            exoPlayerAudioPlayer.release()
-        }
     }
 
-    fun formatMillis(millis: Long): String {
+    override fun onDestroy() {
+        super.onDestroy()
+        exoPlayerAudioPlayer.release()
+    }
+
+    private fun formatMillis(millis: Long): String {
         val totalSeconds = millis / 1000
         val minutes = totalSeconds / 60
         val seconds = totalSeconds % 60
         return "%02d:%02d".format(minutes, seconds)
+    }
+}
+
+@Composable
+private fun ColumnScope.AudioTabContent(
+    filteredWavFiles: List<File>,
+    playlists: List<PlaylistEntry>,
+    audioToPlaylistMap: MutableMap<String, String>,
+    audioDurationCache: MutableMap<String, Long>,
+    menuOpenedForFilePath: String?,
+    onMenuOpenedChange: (String?) -> Unit,
+    onAudioSelected: (File) -> Unit,
+    onMoveToPlaylist: (File) -> Unit,
+    resolveAudioDuration: (String) -> Long,
+    formatDuration: (Long) -> String
+) {
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .weight(1f)
+    ) {
+        items(
+            items = filteredWavFiles,
+            key = { it.absolutePath }
+        ) { file: File ->
+            val isMenuOpen = menuOpenedForFilePath == file.absolutePath
+            val durationMs = audioDurationCache.getOrPut(file.absolutePath) {
+                resolveAudioDuration(file.absolutePath)
+            }
+            val playlistName = audioToPlaylistMap[file.absolutePath]
+            val playlistObj = playlists.find { it.title == playlistName }
+            val playlistColor = playlistObj?.color ?: Color(0xFF8EEAE7)
+            val textColor = if (playlistObj != null) Color.White else Color.Black
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp)
+                    .background(
+                        playlistColor,
+                        shape = MaterialTheme.shapes.medium
+                    )
+                    .padding(12.dp)
+                    .clickable { onAudioSelected(file) },
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    if (!playlistName.isNullOrBlank()) {
+                        Text(
+                            text = playlistName,
+                            color = textColor,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                    Text(
+                        text = file.name,
+                        fontWeight = FontWeight.Medium,
+                        color = textColor
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = if (durationMs > 0) formatDuration(durationMs) else "--:--",
+                    color = textColor.copy(alpha = 0.85f),
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+
+                IconButton(onClick = {
+                    onMenuOpenedChange(if (isMenuOpen) null else file.absolutePath)
+                }) {
+                    Icon(
+                        imageVector = Icons.Filled.MoreVert,
+                        contentDescription = "Opções"
+                    )
+                }
+
+                DropdownMenu(
+                    expanded = isMenuOpen,
+                    onDismissRequest = { onMenuOpenedChange(null) }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Excluir") },
+                        onClick = { onMenuOpenedChange(null) }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Mover para playlist") },
+                        onClick = {
+                            onMenuOpenedChange(null)
+                            onMoveToPlaylist(file)
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlaylistsTabContent(
+    playlists: MutableList<PlaylistEntry>,
+    audioToPlaylistMap: MutableMap<String, String>,
+    favoriteIds: MutableList<Int>,
+    onlyFavorites: Boolean,
+    searchText: String,
+    wavFiles: List<File>,
+    availableColors: List<Color>,
+    bottomBarTotalHeight: Dp,
+    onOpenAudiosByPlaylist: (String) -> Unit
+) {
+    val filteredBySearch = if (searchText.isBlank()) {
+        playlists
+    } else {
+        playlists.filter { it.title.contains(searchText, ignoreCase = true) }
+    }
+
+    val displayed = if (onlyFavorites) {
+        filteredBySearch.filter { favoriteIds.contains(it.id) }
+    } else {
+        filteredBySearch
+    }
+
+    var showAddDialog by remember { mutableStateOf(false) }
+    var newPlaylistName by remember { mutableStateOf("") }
+    var selectedColor by remember { mutableStateOf(availableColors.first()) }
+
+    Box(Modifier.fillMaxSize()) {
+        if (displayed.isEmpty()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Image(
+                    painter = painterResource(id = R.drawable.disc),
+                    contentDescription = "Disco",
+                    modifier = Modifier.size(120.dp)
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "Está vazio!",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "Toque no + para criar uma playlist",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFF6B6B6B)
+                )
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .fillMaxHeight(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(displayed, key = { it.id }) { item ->
+                    PlaylistCard(
+                        title = item.title,
+                        subtitle = "${audioToPlaylistMap.values.count { it == item.title }}/${wavFiles.size} ÁUDIOS",
+                        color = item.color,
+                        isFavorite = favoriteIds.contains(item.id),
+                        availableColors = availableColors,
+                        onFavoriteToggle = {
+                            if (favoriteIds.contains(item.id)) {
+                                favoriteIds.remove(item.id)
+                            } else {
+                                favoriteIds.add(item.id)
+                            }
+                        },
+                        onClick = { onOpenAudiosByPlaylist(item.title) },
+                        onRename = { newName ->
+                            val idx = playlists.indexOfFirst { it.id == item.id }
+                            if (idx >= 0) {
+                                val oldName = playlists[idx].title
+                                playlists[idx] = playlists[idx].copy(title = newName)
+                                val updated = audioToPlaylistMap.mapValues { (_, value) ->
+                                    if (value == oldName) newName else value
+                                }
+                                audioToPlaylistMap.clear()
+                                audioToPlaylistMap.putAll(updated)
+                            }
+                        },
+                        onColorChange = { newColor ->
+                            val idx = playlists.indexOfFirst { it.id == item.id }
+                            if (idx >= 0) {
+                                playlists[idx] = playlists[idx].copy(color = newColor)
+                            }
+                        },
+                        onDelete = {
+                            val playlistName = item.title
+                            playlists.removeAll { it.id == item.id }
+                            val toRemove = audioToPlaylistMap
+                                .filterValues { it == playlistName }
+                                .keys
+                                .toList()
+                            toRemove.forEach { audioToPlaylistMap.remove(it) }
+                        }
+                    )
+                }
+            }
+        }
+
+        FloatingActionButton(
+            onClick = { showAddDialog = true },
+            containerColor = Color(0xFF2DC9C6),
+            contentColor = Color.White,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 24.dp, bottom = bottomBarTotalHeight + 16.dp)
+        ) {
+            Icon(Icons.Filled.Add, contentDescription = "Nova Playlist")
+        }
+
+        if (showAddDialog) {
+            AlertDialog(
+                onDismissRequest = { showAddDialog = false },
+                title = { Text("Nova Playlist") },
+                text = {
+                    Column {
+                        OutlinedTextField(
+                            value = newPlaylistName,
+                            onValueChange = { newPlaylistName = it },
+                            label = { Text("Nome da playlist") }
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(text = "Escolha a cor:", style = MaterialTheme.typography.bodyMedium)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        ColorWheelPicker(
+                            selectedColor = selectedColor,
+                            onColorSelected = { selectedColor = it },
+                            modifier = Modifier.align(Alignment.CenterHorizontally)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            availableColors.forEach { color ->
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .background(color)
+                                        .border(
+                                            width = if (selectedColor == color) 3.dp else 1.dp,
+                                            color = if (selectedColor == color) Color.White else Color.Transparent,
+                                            shape = CircleShape
+                                        )
+                                        .clickable { selectedColor = color }
+                                )
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        if (newPlaylistName.isNotBlank()) {
+                            val nextId = (playlists.maxOfOrNull { it.id } ?: 0) + 1
+                            playlists.add(
+                                PlaylistEntry(
+                                    nextId,
+                                    newPlaylistName,
+                                    "${0}/${wavFiles.size} ÁUDIOS",
+                                    selectedColor
+                                )
+                            )
+                            newPlaylistName = ""
+                            selectedColor = availableColors.first()
+                            showAddDialog = false
+                        }
+                    }) { Text("Criar") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showAddDialog = false }) { Text("Cancelar") }
+                }
+            )
+        }
     }
 }

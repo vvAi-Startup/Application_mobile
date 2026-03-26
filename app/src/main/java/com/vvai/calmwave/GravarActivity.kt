@@ -14,7 +14,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Close
@@ -43,7 +42,6 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.tooling.preview.Preview
 import kotlin.math.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -119,7 +117,6 @@ class GravarActivity : ComponentActivity() {
                 val uiState by viewModel.uiState.collectAsState()
                 val isRecording = uiState.isRecording
                 val isPaused = uiState.isPaused
-                val wavFiles = uiState.wavFiles
                 val elapsedSeconds = uiState.currentPosition / 1000 // converte ms para segundos
 
                 // LaunchedEffect para atualizar o tempo de gravação

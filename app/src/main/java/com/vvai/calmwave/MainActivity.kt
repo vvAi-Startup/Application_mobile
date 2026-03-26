@@ -24,7 +24,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.vvai.calmwave.ui.theme.CalmWaveTheme
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import java.io.File
 import java.text.SimpleDateFormat
@@ -281,6 +280,7 @@ fun AudioPlayerScreen(
     onSaveProcessedAudio: () -> Unit
 ) {
     var isSeeking by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
 
     Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
         Column(
@@ -294,7 +294,7 @@ fun AudioPlayerScreen(
                 modifier = Modifier.padding(bottom = 16.dp, top = 16.dp)
             )
 
-            // Botões de Gravação e Teste
+            // Botões de Gravação
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly
@@ -346,19 +346,12 @@ fun AudioPlayerScreen(
                         },
                         onValueChangeFinished = {
                             val bounded = sliderPosition.toLong().coerceIn(0L, uiState.totalDuration)
-                            
-                            // Executa o seek de forma segura
-                            try {
-                                onSeek(bounded)
-                            } catch (e: Exception) {
-                                println("Erro durante seek no Slider: ${e.message}")
-                                e.printStackTrace()
-                            }
+                            onSeek(bounded)
                             
                             // Aguarda um pouco antes de permitir atualizações automáticas
                             // Delay maior para seek para trás para evitar conflitos
                             val delayMs = if (bounded < uiState.currentPosition) 300L else 150L
-                            GlobalScope.launch {
+                            coroutineScope.launch {
                                 kotlinx.coroutines.delay(delayMs)
                                 isSeeking = false
                             }

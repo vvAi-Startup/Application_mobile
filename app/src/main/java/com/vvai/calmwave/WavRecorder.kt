@@ -1,5 +1,6 @@
 package com.vvai.calmwave
 
+import android.annotation.SuppressLint
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
@@ -47,6 +48,7 @@ class WavRecorder {
                 AudioConstants.BITS_PER_SAMPLE / 8 * overlapDurationMs / 1000).toInt()
     }
 
+    @SuppressLint("MissingPermission")
     suspend fun startRecording(filePath: String) {
         val outputFile = File(filePath)
         isRecording = true
