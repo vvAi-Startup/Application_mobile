@@ -9,6 +9,9 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -46,8 +49,11 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.vvai.calmwave.ui.theme.CalmWaveTheme
+import com.vvai.calmwave.data.remote.ApiClient
 
 // Top-level model used by several composables
 data class PlaylistItem(val title: String, val subtitle: String = "", val color: Color)
@@ -70,6 +76,7 @@ fun PrincipalScreen(modifier: Modifier = Modifier) {
     var foneConnected by remember { mutableStateOf(false) }
     var showBluetoothDialog by remember { mutableStateOf(false) }
     val pairedDevices = remember { mutableStateListOf<String>() }
+    var loggedUserName by remember { mutableStateOf("Usuário") }
 
     fun loadPairedDevices() {
         pairedDevices.clear()
@@ -107,12 +114,24 @@ fun PrincipalScreen(modifier: Modifier = Modifier) {
         }
     }
 
+    fun loadLoggedUserName() {
+        val authPrefs = context.getSharedPreferences("calmwave_auth", Context.MODE_PRIVATE)
+        val savedName = authPrefs.getString("user_name", null)
+        val fallbackEmail = authPrefs.getString("user_email", null)
+        loggedUserName = when {
+            !savedName.isNullOrBlank() -> savedName
+            !fallbackEmail.isNullOrBlank() -> fallbackEmail
+            else -> "Usuário"
+        }
+    }
+
     // reload when the composable resumes (every time user returns to this screen)
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 loadPlaylists()
                 loadPairedDevices()
+                loadLoggedUserName()
                 // keep existing foneConnected state — system broadcasts will update it
             }
         }
@@ -149,10 +168,31 @@ fun PrincipalScreen(modifier: Modifier = Modifier) {
     }
 
     LaunchedEffect(Unit) { loadPlaylists() }
+    LaunchedEffect(Unit) { loadLoggedUserName() }
     // initial paired devices
     LaunchedEffect(Unit) { loadPairedDevices() }
     Scaffold(
-        topBar = { TopBar(title = "Calm Wave") },
+        topBar = {
+            TopBar(
+                title = "Calm Wave",
+                userName = loggedUserName,
+                onLogoutClick = {
+                    val authPrefs = context.getSharedPreferences("calmwave_auth", Context.MODE_PRIVATE)
+                    authPrefs.edit()
+                        .remove("access_token")
+                        .remove("user_name")
+                        .remove("user_email")
+                        .apply()
+                    ApiClient.clear()
+
+                    val intent = Intent(context, LoginActivity::class.java).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                    }
+                    context.startActivity(intent)
+                    (context as? Activity)?.finish()
+                }
+            )
+        },
         bottomBar = {
             BottomNavigationBar(selected = "Principal", modifier = Modifier.fillMaxWidth())
         }
@@ -182,10 +222,10 @@ fun PrincipalScreen(modifier: Modifier = Modifier) {
                 )
                 // Fone status (dinâmico)
                 StatusCard(
-                    title = if (foneConnected) "Fone\nconectado" else "Fone\ndesconectado",
+                    title = if (foneConnected) "Fone\nconectado" else "Conectar fone\nBluetooth",
                     color = if (foneConnected) Color(0xFF1F8B78) else Color(0xFF9EEFD8),
                     icon = Icons.Filled.Headset,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f).clickable { showBluetoothDialog = true }
                 )
             }
 
@@ -301,7 +341,7 @@ fun StatusCard(title: String, color: Color, icon: androidx.compose.ui.graphics.v
                 if (icon != null) {
                     Icon(imageVector = icon, contentDescription = null, tint = Color.White)
                 }
-                Text(text = title, color = Color.White, fontWeight = FontWeight.Medium)
+                Text(text = title, color = Color.White, fontWeight = FontWeight.Medium, fontSize = 18.sp)
             }
         }
     }
@@ -309,34 +349,20 @@ fun StatusCard(title: String, color: Color, icon: androidx.compose.ui.graphics.v
 
 @Composable
 fun PlaylistsCarousel(playlists: List<PlaylistItem>, modifier: Modifier = Modifier) {
-    val rows = playlists.chunked(3)
-
-    Column(
-        modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+    // Exibe no máximo 3 colunas x 2 linhas visíveis; se houver mais, rolagem vertical.
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(3),
+        modifier = modifier
+            .fillMaxWidth()
+            .height(236.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        rows.forEach { rowItems ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                rowItems.forEach { item ->
-                    PlaylistCard(
-                        item = item,
-                        modifier = Modifier
-                            .weight(1f)
-                            .aspectRatio(1f)
-                    )
-                }
-
-                repeat(3 - rowItems.size) {
-                    Spacer(
-                        modifier = Modifier
-                            .weight(1f)
-                            .aspectRatio(1f)
-                    )
-                }
-            }
+        items(playlists) { item ->
+            PlaylistCard(
+                item = item,
+                modifier = Modifier.aspectRatio(1f)
+            )
         }
     }
 }
@@ -381,7 +407,68 @@ fun RecordButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
             .height(48.dp)
             .width(220.dp)
     ) {
-        Text(text = "Iniciar Gravação", color = Color.White)
+        Text(text = "Iniciar Gravação", color = Color.White, fontSize = 20.sp)
 
+    }
+}
+
+@Preview(name = "Tela Inicial", showBackground = true, widthDp = 393, heightDp = 852)
+@Composable
+private fun PrincipalScreenPreview() {
+    CalmWaveTheme {
+        Scaffold(
+            topBar = { TopBar(title = "Calm Wave", userName = "Usuário Demo") },
+            bottomBar = { BottomNavigationBar(selected = "Principal", modifier = Modifier.fillMaxWidth()) }
+        ) { padding ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .background(Color(0xFFF6FCFD))
+                    .padding(horizontal = 18.dp, vertical = 12.dp)
+            ) {
+
+
+                Text(
+                    text = "Bem vindo!",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF0F4B58),
+                    modifier = Modifier.padding(top = 8.dp, bottom = 12.dp)
+                )
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    StatusCard(
+                        title = "Conectar com\nOrientador",
+                        color = Color(0xFF2DC9C6),
+                        icon = Icons.Filled.Mic,
+                        modifier = Modifier.weight(1f)
+                    )
+                    StatusCard(
+                        title = "Fone\nconectado",
+                        color = Color(0xFF1F8B78),
+                        icon = Icons.Filled.Headset,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(18.dp))
+                Text(text = "Suas Playlists", fontWeight = FontWeight.SemiBold, fontSize = 20.sp)
+                Spacer(modifier = Modifier.height(8.dp))
+
+                PlaylistsCarousel(
+                    playlists = listOf(
+                        PlaylistItem("Dormir", "", Color(0xFF6FAF9E)),
+                        PlaylistItem("Foco", "", Color(0xFFF29345)),
+                        PlaylistItem("Relax", "", Color(0xFF2DC9C6))
+                    )
+                )
+
+                Spacer(modifier = Modifier.height(35.dp))
+                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    RecordButton(onClick = {})
+                }
+            }
+        }
     }
 }

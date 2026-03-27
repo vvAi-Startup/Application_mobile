@@ -51,6 +51,11 @@
             android:theme="@style/Theme.CalmWave"
             android:screenOrientation="portrait"
             android:launchMode="singleTask" />
+        <activity
+            android:name=".LoginActivity"
+            android:exported="false"
+            android:theme="@style/Theme.CalmWave"
+            android:screenOrientation="portrait" />
         <activity android:name=".MainActivity" />
         <activity
             android:name=".PrincipalActivity"

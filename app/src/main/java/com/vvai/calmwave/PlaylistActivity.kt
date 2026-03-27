@@ -33,6 +33,7 @@ import androidx.compose.foundation.border
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.tooling.preview.Preview
 import com.vvai.calmwave.components.BottomNavigationBar
 import com.vvai.calmwave.components.TopBar
 import com.vvai.calmwave.ui.components.PlaylistComponents.PlaylistCard
@@ -881,7 +882,7 @@ private fun PlaylistsTabContent(
             contentColor = Color.White,
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(end = 24.dp, bottom = bottomBarTotalHeight + 16.dp)
+                .padding(end = 24.dp, bottom = 16.dp)
         ) {
             Icon(Icons.Filled.Add, contentDescription = "Nova Playlist")
         }
@@ -946,6 +947,67 @@ private fun PlaylistsTabContent(
                     TextButton(onClick = { showAddDialog = false }) { Text("Cancelar") }
                 }
             )
+        }
+    }
+}
+
+@Preview(name = "Playlist Screen", showBackground = true, widthDp = 393, heightDp = 852)
+@Composable
+private fun PlaylistScreenPreview() {
+    CalmWaveTheme {
+        val playlists = remember {
+            mutableStateListOf(
+                PlaylistEntry(1, "Dormir", "2/6 ÁUDIOS", Color(0xFF6FAF9E)),
+                PlaylistEntry(2, "Foco", "1/6 ÁUDIOS", Color(0xFFF29345)),
+                PlaylistEntry(3, "Relax", "3/6 ÁUDIOS", Color(0xFF2DC9C6))
+            )
+        }
+        val audioMap = remember {
+            mutableStateMapOf(
+                "audio_1.wav" to "Dormir",
+                "audio_2.wav" to "Dormir",
+                "audio_3.wav" to "Foco",
+                "audio_4.wav" to "Relax",
+                "audio_5.wav" to "Relax",
+                "audio_6.wav" to "Relax"
+            )
+        }
+        val favoriteIds = remember { mutableStateListOf(1, 3) }
+
+        Scaffold(
+            topBar = { TopBar(title = "Playlists", userName = "Usuário Demo") },
+            bottomBar = {
+                BottomNavigationBar(
+                    selected = "Playlists",
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        ) { padding ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .background(Color(0xFFF7F7F7))
+            ) {
+                PlaylistsTabContent(
+                    playlists = playlists,
+                    audioToPlaylistMap = audioMap,
+                    favoriteIds = favoriteIds,
+                    onlyFavorites = false,
+                    searchText = "",
+                    wavFiles = listOf(
+                        File("audio_1.wav"),
+                        File("audio_2.wav"),
+                        File("audio_3.wav"),
+                        File("audio_4.wav"),
+                        File("audio_5.wav"),
+                        File("audio_6.wav")
+                    ),
+                    availableColors = DEFAULT_PLAYLIST_COLORS,
+                    bottomBarTotalHeight = 72.dp,
+                    onOpenAudiosByPlaylist = {}
+                )
+            }
         }
     }
 }

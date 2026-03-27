@@ -28,6 +28,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.res.painterResource
 import com.vvai.calmwave.PrincipalActivity
+import androidx.compose.ui.tooling.preview.Preview
+import com.vvai.calmwave.ui.theme.CalmWaveTheme
 
 @Composable
 fun BottomNavigationBar(selected: String, modifier: Modifier = Modifier) {
@@ -142,5 +144,13 @@ fun BottomNavigationBar(selected: String, modifier: Modifier = Modifier) {
                 color = gravacaoColor,
             )
         }
+    }
+}
+
+@Preview(name = "Bottom Menu", showBackground = true, widthDp = 393, heightDp = 110)
+@Composable
+private fun BottomNavigationBarPreview() {
+    CalmWaveTheme {
+        BottomNavigationBar(selected = "Principal")
     }
 }

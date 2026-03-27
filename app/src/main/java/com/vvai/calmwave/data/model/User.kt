@@ -6,8 +6,9 @@ import com.google.gson.annotations.SerializedName
  * Modelo de resposta de login da API
  */
 data class LoginResponse(
+    @SerializedName(value = "token", alternate = ["access_token", "accessToken"])
     val token: String,
-    val user: User
+    val user: User? = null
 )
 
 /**
