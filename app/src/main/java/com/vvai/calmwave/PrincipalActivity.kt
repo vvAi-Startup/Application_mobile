@@ -262,7 +262,15 @@ fun PrincipalScreen(modifier: Modifier = Modifier) {
                 }
             } else {
                 PlaylistsCarousel(
-                    playlists = playlistsState.toList()
+                    playlists = playlistsState.toList(),
+                    onPlaylistClick = { item ->
+                        val intentPlaylist = Intent(context, PlaylistActivity::class.java).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                            putExtra(PlaylistActivity.EXTRA_OPEN_PLAYLIST_TITLE, item.title)
+                            putExtra(PlaylistActivity.EXTRA_OPEN_AUDIOS_TAB, true)
+                        }
+                        context.startActivity(intentPlaylist)
+                    }
                 )
             }
 
@@ -348,7 +356,11 @@ fun StatusCard(title: String, color: Color, icon: androidx.compose.ui.graphics.v
 }
 
 @Composable
-fun PlaylistsCarousel(playlists: List<PlaylistItem>, modifier: Modifier = Modifier) {
+fun PlaylistsCarousel(
+    playlists: List<PlaylistItem>,
+    modifier: Modifier = Modifier,
+    onPlaylistClick: (PlaylistItem) -> Unit = {}
+) {
     // Exibe no máximo 3 colunas x 2 linhas visíveis; se houver mais, rolagem vertical.
     LazyVerticalGrid(
         columns = GridCells.Fixed(3),
@@ -361,16 +373,17 @@ fun PlaylistsCarousel(playlists: List<PlaylistItem>, modifier: Modifier = Modifi
         items(playlists) { item ->
             PlaylistCard(
                 item = item,
-                modifier = Modifier.aspectRatio(1f)
+                modifier = Modifier.aspectRatio(1f),
+                onClick = { onPlaylistClick(item) }
             )
         }
     }
 }
 
 @Composable
-fun PlaylistCard(item: PlaylistItem, modifier: Modifier = Modifier) {
+fun PlaylistCard(item: PlaylistItem, modifier: Modifier = Modifier, onClick: () -> Unit = {}) {
     Surface(
-        modifier = modifier,
+        modifier = modifier.clickable { onClick() },
         shape = RoundedCornerShape(12.dp),
         color = Color.Transparent
     ) {

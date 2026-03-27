@@ -40,7 +40,7 @@ class AudioService {
         try {
             // Prepare output file for processed audio
             val outDir = context.getExternalFilesDir(null)
-            processedOutputFile = File(outDir, "processed_${System.currentTimeMillis()}.wav")
+            processedOutputFile = File(outDir, "denoised_${System.currentTimeMillis()}.wav")
             processedOutputStream = FileOutputStream(processedOutputFile!!)
             writeWavHeader(processedOutputStream!!) // cabeçalho temporário
             processedDataBytes = 0

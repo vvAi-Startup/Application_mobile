@@ -1,6 +1,7 @@
 package com.vvai.calmwave
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -46,6 +47,7 @@ import kotlin.math.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.yield
+import com.vvai.calmwave.data.remote.ApiClient
 
 class GravarActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels {
@@ -146,10 +148,23 @@ class GravarActivity : ComponentActivity() {
                             // Usando o componente TopBar reutilizável
                             TopBar(
                                 title = "Gravação",
-                                modifier = Modifier
-                                    .fillMaxWidth()
+                                modifier = Modifier.fillMaxWidth(),
+                                onLogoutClick = {
+                                    val authPrefs = getSharedPreferences("calmwave_auth", MODE_PRIVATE)
+                                    authPrefs.edit()
+                                        .remove("access_token")
+                                        .remove("user_name")
+                                        .remove("user_email")
+                                        .apply()
+                                    ApiClient.clear()
 
-                                )
+                                    val intent = Intent(this@GravarActivity, LoginActivity::class.java).apply {
+                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                                    }
+                                    startActivity(intent)
+                                    finish()
+                                }
+                            )
 
                             Spacer(modifier = Modifier.height(18.dp))
 

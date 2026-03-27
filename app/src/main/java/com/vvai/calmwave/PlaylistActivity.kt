@@ -1,5 +1,8 @@
 package com.vvai.calmwave
 
+import android.app.Activity
+import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -43,10 +46,12 @@ import com.vvai.calmwave.ui.components.PlaylistComponents.PlaylistSelectionDialo
 import com.vvai.calmwave.ui.components.PlaylistComponents.FilterSheet
 import java.io.File
 import com.vvai.calmwave.R
+import com.vvai.calmwave.data.remote.ApiClient
 import com.vvai.calmwave.ui.theme.CalmWaveTheme
 
 private const val PREFS_PLAYLISTS = "playlists"
 private const val PREFS_AUDIO_TO_PLAYLIST_MAP = "audioToPlaylistMap"
+private const val PREFS_AUDIO_DISPLAY_NAMES = "audioDisplayNames"
 
 private val DEFAULT_PLAYLIST_COLORS = listOf(
     Color(0xFF6FAF9E),
@@ -66,10 +71,18 @@ private data class PlaylistEntry(
 class PlaylistActivity : ComponentActivity() {
     private lateinit var exoPlayerAudioPlayer: ExoPlayerAudioPlayer
 
+    companion object {
+        const val EXTRA_OPEN_PLAYLIST_TITLE = "extra_open_playlist_title"
+        const val EXTRA_OPEN_AUDIOS_TAB = "extra_open_audios_tab"
+    }
+
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        val openPlaylistTitle = intent.getStringExtra(EXTRA_OPEN_PLAYLIST_TITLE)
+        val openAudiosTab = intent.getBooleanExtra(EXTRA_OPEN_AUDIOS_TAB, true)
         
         // Define animação de entrada (deslizar da esquerda ao vir de Gravação)
         overridePendingTransition(R.anim.slide_in_left, R.anim.slide_out_right)
@@ -88,6 +101,7 @@ class PlaylistActivity : ComponentActivity() {
             // cores disponíveis para criação de playlist
             val availableColors = DEFAULT_PLAYLIST_COLORS
             val audioToPlaylistMap = remember { mutableStateMapOf<String, String>() }
+            val audioDisplayNames = remember { mutableStateMapOf<String, String>() }
             val favoriteIds = remember { mutableStateListOf<Int>() }
             var onlyFavorites by remember { mutableStateOf(false) }
             var showFilterMenu by remember { mutableStateOf(false) }
@@ -95,6 +109,7 @@ class PlaylistActivity : ComponentActivity() {
             var playlistFilter by remember { mutableStateOf<String?>(null) }
             val activeColor = Color(0xFF2DC9C6)
             val audioDurationCache = remember { mutableStateMapOf<String, Long>() }
+            var consumedInitialNavigation by remember { mutableStateOf(false) }
             
             // Global state for DropdownMenu control - using file path as key
             var menuOpenedForFilePath by remember { mutableStateOf<String?>(null) }
@@ -110,6 +125,9 @@ class PlaylistActivity : ComponentActivity() {
                 val audioMapJson =
                     audioToPlaylistMap.entries.joinToString("||") { it.key + "|" + it.value }
                 editor.putString(PREFS_AUDIO_TO_PLAYLIST_MAP, audioMapJson)
+                val audioDisplayNamesJson =
+                    audioDisplayNames.entries.joinToString("||") { it.key + "|" + it.value }
+                editor.putString(PREFS_AUDIO_DISPLAY_NAMES, audioDisplayNamesJson)
                 editor.apply()
             }
 
@@ -142,17 +160,48 @@ class PlaylistActivity : ComponentActivity() {
                         if (parts.size == 2) audioToPlaylistMap[parts[0]] = parts[1]
                     }
                 }
+
+                val audioDisplayNamesJson = prefs.getString(PREFS_AUDIO_DISPLAY_NAMES, null)
+                audioDisplayNames.clear()
+                if (!audioDisplayNamesJson.isNullOrBlank()) {
+                    audioDisplayNamesJson.split("||").forEach {
+                        val parts = it.split("|")
+                        if (parts.size == 2) audioDisplayNames[parts[0]] = parts[1]
+                    }
+                }
             }
             LaunchedEffect(Unit) { loadPlaylists() }
-            LaunchedEffect(playlists.toList(), audioToPlaylistMap.toMap()) { savePlaylists() }
+            LaunchedEffect(playlists.toList(), audioToPlaylistMap.toMap(), audioDisplayNames.toMap()) { savePlaylists() }
+            LaunchedEffect(playlists.toList(), consumedInitialNavigation) {
+                if (!consumedInitialNavigation && !openPlaylistTitle.isNullOrBlank()) {
+                    if (playlists.any { it.title == openPlaylistTitle }) {
+                        playlistFilter = openPlaylistTitle
+                        selectedTab = if (openAudiosTab) "Áudios" else "Playlists"
+                    }
+                    consumedInitialNavigation = true
+                }
+            }
 
             // --- Audio Files ---
-            val wavFiles = remember {
+            val wavFiles = remember { mutableStateListOf<File>() }
+
+            fun refreshWavFiles() {
                 val dir = context.getExternalFilesDir(null)
-                dir?.listFiles { f -> f.isFile && f.name.endsWith(".wav", ignoreCase = true) }
-                    ?.sortedByDescending { it.lastModified() } // Ordena por data de modificação (mais recente primeiro)
+                val files = dir?.listFiles { f -> f.isFile && f.name.endsWith(".wav", ignoreCase = true) }
+                    ?.sortedByDescending { it.lastModified() }
                     ?: emptyList()
+                wavFiles.clear()
+                wavFiles.addAll(files)
+
+                // Limpa nomes personalizados de arquivos que não existem mais
+                val currentPaths = wavFiles.map { it.absolutePath }.toSet()
+                val removedKeys = audioDisplayNames.keys.filter { it !in currentPaths }
+                if (removedKeys.isNotEmpty()) {
+                    removedKeys.forEach { audioDisplayNames.remove(it) }
+                }
             }
+
+            LaunchedEffect(Unit) { refreshWavFiles() }
 
             // --- UI ---
             Surface(
@@ -172,8 +221,24 @@ class PlaylistActivity : ComponentActivity() {
                         ) {
                             // Top Bar
                             // colar a TopBar no topo da tela respeitando a barra de status
-                            TopBar(title = "Playlists", modifier = Modifier
-                                .fillMaxWidth()
+                            TopBar(
+                                title = "Playlists",
+                                modifier = Modifier.fillMaxWidth(),
+                                onLogoutClick = {
+                                    val authPrefs = context.getSharedPreferences("calmwave_auth", Context.MODE_PRIVATE)
+                                    authPrefs.edit()
+                                        .remove("access_token")
+                                        .remove("user_name")
+                                        .remove("user_email")
+                                        .apply()
+                                    ApiClient.clear()
+
+                                    val intent = Intent(context, LoginActivity::class.java).apply {
+                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                                    }
+                                    context.startActivity(intent)
+                                    (context as? Activity)?.finish()
+                                }
                             )
                             Spacer(modifier = Modifier.height(20.dp))
                             // Tabs and Search
@@ -242,6 +307,7 @@ class PlaylistActivity : ComponentActivity() {
                                     filteredWavFiles = filteredWavFiles,
                                     playlists = playlists,
                                     audioToPlaylistMap = audioToPlaylistMap,
+                                    audioDisplayNames = audioDisplayNames,
                                     audioDurationCache = audioDurationCache,
                                     menuOpenedForFilePath = menuOpenedForFilePath,
                                     onMenuOpenedChange = { menuOpenedForFilePath = it },
@@ -251,6 +317,15 @@ class PlaylistActivity : ComponentActivity() {
                                     },
                                     onMoveToPlaylist = { file ->
                                         showPlaylistDialogForAudio = file
+                                    },
+                                    onRenameAudio = { file, customName ->
+                                        val trimmed = customName.trim()
+                                        if (trimmed.isBlank()) {
+                                            audioDisplayNames.remove(file.absolutePath)
+                                        } else {
+                                            audioDisplayNames[file.absolutePath] = trimmed
+                                        }
+                                        savePlaylists()
                                     },
                                     resolveAudioDuration = { filePath ->
                                         val player = ExoPlayerAudioPlayer(this@PlaylistActivity)
@@ -292,7 +367,10 @@ class PlaylistActivity : ComponentActivity() {
                                         horizontalAlignment = Alignment.CenterHorizontally // CORRIGIDO
                                     ) {
                                         Text(
-                                            text = selectedAudioFile?.name ?: "",
+                                            text = selectedAudioFile?.let {
+                                                audioDisplayNames[it.absolutePath]?.takeIf { name -> name.isNotBlank() }
+                                                    ?: it.name
+                                            } ?: "",
                                             style = MaterialTheme.typography.titleMedium,
                                             fontWeight = FontWeight.Bold,
                                             color = Color.White
@@ -674,24 +752,82 @@ private fun ColumnScope.AudioTabContent(
     filteredWavFiles: List<File>,
     playlists: List<PlaylistEntry>,
     audioToPlaylistMap: MutableMap<String, String>,
+    audioDisplayNames: MutableMap<String, String>,
     audioDurationCache: MutableMap<String, Long>,
     menuOpenedForFilePath: String?,
     onMenuOpenedChange: (String?) -> Unit,
     onAudioSelected: (File) -> Unit,
     onMoveToPlaylist: (File) -> Unit,
+    onRenameAudio: (File, String) -> Unit,
     resolveAudioDuration: (String) -> Long,
     formatDuration: (Long) -> String
 ) {
+    var renameTarget by remember { mutableStateOf<File?>(null) }
+    var renameText by remember { mutableStateOf("") }
+    var showProcessedCategory by remember { mutableStateOf(true) }
+    var showOriginalCategory by remember { mutableStateOf(true) }
+
+    val processedFiles = remember(filteredWavFiles) {
+        filteredWavFiles.filter {
+            it.name.startsWith("denoised_", ignoreCase = true) ||
+                it.name.startsWith("processed_", ignoreCase = true) // compatibilidade com arquivos antigos
+        }
+    }
+    val originalFiles = remember(filteredWavFiles) {
+        filteredWavFiles.filter {
+            it.name.startsWith("audio_", ignoreCase = true) ||
+                (!it.name.startsWith("denoised_", ignoreCase = true) &&
+                    !it.name.startsWith("processed_", ignoreCase = true))
+        }
+    }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
             .weight(1f)
     ) {
-        items(
-            items = filteredWavFiles,
-            key = { it.absolutePath }
-        ) { file: File ->
+        fun androidx.compose.foundation.lazy.LazyListScope.audioSection(
+            title: String,
+            files: List<File>,
+            expanded: Boolean,
+            onToggle: () -> Unit
+        ) {
+            item(key = "section_$title") {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp, bottom = 6.dp)
+                        .clickable { onToggle() },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "$title ${if (expanded) "v" else ">"}",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF0F4B58)
+                    )
+                }
+            }
+
+            if (!expanded) return
+
+            if (files.isEmpty()) {
+                item(key = "empty_$title") {
+                    Text(
+                        text = "Nenhum áudio em $title",
+                        color = Color(0xFF6B6B6B),
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                }
+                return
+            }
+
+            items(
+                items = files,
+                key = { it.absolutePath }
+            ) { file: File ->
             val isMenuOpen = menuOpenedForFilePath == file.absolutePath
             val durationMs = audioDurationCache.getOrPut(file.absolutePath) {
                 resolveAudioDuration(file.absolutePath)
@@ -700,6 +836,7 @@ private fun ColumnScope.AudioTabContent(
             val playlistObj = playlists.find { it.title == playlistName }
             val playlistColor = playlistObj?.color ?: Color(0xFF8EEAE7)
             val textColor = if (playlistObj != null) Color.White else Color.Black
+            val displayName = audioDisplayNames[file.absolutePath]?.takeIf { it.isNotBlank() } ?: file.name
 
             Row(
                 modifier = Modifier
@@ -722,7 +859,7 @@ private fun ColumnScope.AudioTabContent(
                         )
                     }
                     Text(
-                        text = file.name,
+                        text = displayName,
                         fontWeight = FontWeight.Medium,
                         color = textColor
                     )
@@ -750,6 +887,14 @@ private fun ColumnScope.AudioTabContent(
                     onDismissRequest = { onMenuOpenedChange(null) }
                 ) {
                     DropdownMenuItem(
+                        text = { Text("Renomear") },
+                        onClick = {
+                            onMenuOpenedChange(null)
+                            renameTarget = file
+                            renameText = audioDisplayNames[file.absolutePath] ?: file.nameWithoutExtension
+                        }
+                    )
+                    DropdownMenuItem(
                         text = { Text("Excluir") },
                         onClick = { onMenuOpenedChange(null) }
                     )
@@ -763,6 +908,51 @@ private fun ColumnScope.AudioTabContent(
                 }
             }
         }
+
+        }
+
+        audioSection(
+            title = "Processados",
+            files = processedFiles,
+            expanded = showProcessedCategory,
+            onToggle = { showProcessedCategory = !showProcessedCategory }
+        )
+        audioSection(
+            title = "Originais",
+            files = originalFiles,
+            expanded = showOriginalCategory,
+            onToggle = { showOriginalCategory = !showOriginalCategory }
+        )
+    }
+
+    if (renameTarget != null) {
+        AlertDialog(
+            onDismissRequest = { renameTarget = null },
+            title = { Text("Renomear áudio") },
+            text = {
+                OutlinedTextField(
+                    value = renameText,
+                    onValueChange = { renameText = it },
+                    label = { Text("Nome do áudio") },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    renameTarget?.let { target ->
+                        onRenameAudio(target, renameText)
+                    }
+                    renameTarget = null
+                }) {
+                    Text("Salvar")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { renameTarget = null }) {
+                    Text("Cancelar")
+                }
+            }
+        )
     }
 }
 
