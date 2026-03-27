@@ -54,6 +54,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.vvai.calmwave.ui.theme.CalmWaveTheme
 import com.vvai.calmwave.data.remote.ApiClient
+import com.vvai.calmwave.util.enterImmersiveMode
 
 // Top-level model used by several composables
 data class PlaylistItem(val title: String, val subtitle: String = "", val color: Color)
@@ -61,9 +62,15 @@ data class PlaylistItem(val title: String, val subtitle: String = "", val color:
 class PrincipalActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enterImmersiveMode()
         setContent {
             PrincipalScreen()
         }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) enterImmersiveMode()
     }
 }
 

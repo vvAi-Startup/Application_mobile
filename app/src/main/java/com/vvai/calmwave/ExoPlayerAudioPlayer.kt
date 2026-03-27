@@ -2,74 +2,80 @@ package com.vvai.calmwave
 
 import android.content.Context
 import androidx.media3.common.MediaItem
-import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 
 class ExoPlayerAudioPlayer(private val context: Context) {
-    private var exoPlayer: ExoPlayer? = null
+    private val exoPlayer get() = PlaybackPlayerHolder.getPlayer(context)
 
     fun initialize(playerView: PlayerView, audioFiles: List<String>) {
-        release()
-        exoPlayer = ExoPlayer.Builder(context).build().also { player ->
-            playerView.player = player
+        playerView.player = exoPlayer
+        if (audioFiles.isNotEmpty()) {
             val mediaItems = audioFiles.map { MediaItem.fromUri(it) }
-            player.setMediaItems(mediaItems)
-            player.prepare()
+            exoPlayer.setMediaItems(mediaItems)
+            exoPlayer.prepare()
         }
     }
 
+    fun initializeQueue(audioFiles: List<String>, startIndex: Int = 0) {
+        if (audioFiles.isEmpty()) return
+        PlaybackPlayerHolder.setQueue(context, audioFiles, startIndex)
+    }
+
     fun play() {
-        exoPlayer?.play()
+        PlaybackForegroundService.start(context)
+        exoPlayer.play()
     }
 
     fun pause() {
-        exoPlayer?.pause()
+        exoPlayer.pause()
+        PlaybackForegroundService.stop(context)
     }
 
     fun next() {
-        exoPlayer?.let {
-            if (it.hasNextMediaItem()) it.seekToNextMediaItem()
+        if (exoPlayer.hasNextMediaItem()) {
+            exoPlayer.seekToNextMediaItem()
         }
     }
 
     fun previous() {
-        exoPlayer?.let {
-            if (it.hasPreviousMediaItem()) it.seekToPreviousMediaItem()
+        if (exoPlayer.hasPreviousMediaItem()) {
+            exoPlayer.seekToPreviousMediaItem()
         }
     }
 
     fun release() {
-        exoPlayer?.release()
-        exoPlayer = null
+        exoPlayer.pause()
+        exoPlayer.stop()
+        exoPlayer.clearMediaItems()
+        PlaybackForegroundService.stop(context)
     }
 
     fun getDuration(): Long {
-        return exoPlayer?.duration ?: 0L
+        return exoPlayer.duration
     }
 
     fun getCurrentPosition(): Long {
-        return exoPlayer?.currentPosition ?: 0L
+        return exoPlayer.currentPosition
     }
 
     fun isPlaying(): Boolean {
-        return exoPlayer?.isPlaying ?: false
+        return exoPlayer.isPlaying
     }
 
     fun seekTo(positionMs: Long) {
-        exoPlayer?.seekTo(positionMs)
+        exoPlayer.seekTo(positionMs)
     }
 
     fun initializeCustom(audioFile: String) {
-        release()
-        exoPlayer = ExoPlayer.Builder(context).build().also { player ->
-            val mediaItem = MediaItem.fromUri(audioFile)
-            player.setMediaItem(mediaItem)
-            player.prepare()
-        }
+        initializeQueue(listOf(audioFile), 0)
     }
 
     fun setPlaybackSpeed(speed: Float) {
         // Always preserve pitch (pitch = 1.0f) for natural sound
-        exoPlayer?.setPlaybackParameters(androidx.media3.common.PlaybackParameters(speed, 1.0f))
+        exoPlayer.setPlaybackParameters(androidx.media3.common.PlaybackParameters(speed, 1.0f))
+    }
+
+    fun getCurrentMediaPath(): String? {
+        return PlaybackPlayerHolder.currentMediaPath()
     }
 }

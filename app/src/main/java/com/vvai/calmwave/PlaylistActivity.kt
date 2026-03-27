@@ -3,6 +3,7 @@ package com.vvai.calmwave
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.media.MediaMetadataRetriever
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -47,6 +48,7 @@ import com.vvai.calmwave.ui.components.PlaylistComponents.FilterSheet
 import java.io.File
 import com.vvai.calmwave.R
 import com.vvai.calmwave.data.remote.ApiClient
+import com.vvai.calmwave.util.enterImmersiveMode
 import com.vvai.calmwave.ui.theme.CalmWaveTheme
 
 private const val PREFS_PLAYLISTS = "playlists"
@@ -80,6 +82,7 @@ class PlaylistActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        enterImmersiveMode()
 
         val openPlaylistTitle = intent.getStringExtra(EXTRA_OPEN_PLAYLIST_TITLE)
         val openAudiosTab = intent.getBooleanExtra(EXTRA_OPEN_AUDIOS_TAB, true)
@@ -94,6 +97,7 @@ class PlaylistActivity : ComponentActivity() {
                 // --- State ---
             var showModal by remember { mutableStateOf(false) }
             var selectedAudioFile by remember { mutableStateOf<File?>(null) }
+            var selectedPlaybackQueue by remember { mutableStateOf<List<File>>(emptyList()) }
             var selectedTab by remember { mutableStateOf("Playlists") }
             var searchText by remember { mutableStateOf("") }
 
@@ -311,8 +315,9 @@ class PlaylistActivity : ComponentActivity() {
                                     audioDurationCache = audioDurationCache,
                                     menuOpenedForFilePath = menuOpenedForFilePath,
                                     onMenuOpenedChange = { menuOpenedForFilePath = it },
-                                    onAudioSelected = { file ->
+                                    onAudioSelected = { file, queue ->
                                         selectedAudioFile = file
+                                        selectedPlaybackQueue = queue
                                         showModal = true
                                     },
                                     onMoveToPlaylist = { file ->
@@ -328,11 +333,17 @@ class PlaylistActivity : ComponentActivity() {
                                         savePlaylists()
                                     },
                                     resolveAudioDuration = { filePath ->
-                                        val player = ExoPlayerAudioPlayer(this@PlaylistActivity)
-                                        player.initializeCustom(filePath)
-                                        val duration = player.getDuration()
-                                        player.release()
-                                        if (duration > 0 && duration < 1000 * 60 * 60 * 10) duration else -1L
+                                        val retriever = MediaMetadataRetriever()
+                                        try {
+                                            retriever.setDataSource(filePath)
+                                            val duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                                                ?.toLongOrNull() ?: -1L
+                                            if (duration > 0 && duration < 1000 * 60 * 60 * 10) duration else -1L
+                                        } catch (_: Exception) {
+                                            -1L
+                                        } finally {
+                                            try { retriever.release() } catch (_: Exception) { }
+                                        }
                                     },
                                     formatDuration = { durationMs -> formatMillis(durationMs) }
                                 )
@@ -380,9 +391,15 @@ class PlaylistActivity : ComponentActivity() {
                                         val position = remember { mutableStateOf(0L) }
                                         val isPlaying = remember { mutableStateOf(false) }
                                         var playbackSpeed by remember { mutableStateOf(1.0f) }
-                                        LaunchedEffect(selectedAudioFile) {
-                                            exoPlayerAudioPlayer.release()
-                                            exoPlayerAudioPlayer.initializeCustom(selectedAudioFile!!.absolutePath)
+                                        LaunchedEffect(selectedAudioFile, selectedPlaybackQueue) {
+                                            val queue = selectedPlaybackQueue.ifEmpty { listOfNotNull(selectedAudioFile) }
+                                            val queuePaths = queue.map { it.absolutePath }
+                                            val startIndex = queue.indexOfFirst { it.absolutePath == selectedAudioFile!!.absolutePath }
+
+                                            exoPlayerAudioPlayer.initializeQueue(
+                                                audioFiles = queuePaths,
+                                                startIndex = if (startIndex >= 0) startIndex else 0
+                                            )
                                             exoPlayerAudioPlayer.setPlaybackSpeed(playbackSpeed)
                                             exoPlayerAudioPlayer.play()
                                         }
@@ -391,6 +408,17 @@ class PlaylistActivity : ComponentActivity() {
                                                 duration.value = exoPlayerAudioPlayer.getDuration()
                                                 position.value = exoPlayerAudioPlayer.getCurrentPosition()
                                                 isPlaying.value = exoPlayerAudioPlayer.isPlaying()
+
+                                                val currentPath = exoPlayerAudioPlayer.getCurrentMediaPath()
+                                                if (!currentPath.isNullOrBlank()) {
+                                                    selectedPlaybackQueue
+                                                        .firstOrNull { it.absolutePath == currentPath }
+                                                        ?.let { currentFile ->
+                                                            if (selectedAudioFile?.absolutePath != currentFile.absolutePath) {
+                                                                selectedAudioFile = currentFile
+                                                            }
+                                                        }
+                                                }
                                                 kotlinx.coroutines.delay(33)
                                             }
                                         }
@@ -517,7 +545,6 @@ class PlaylistActivity : ComponentActivity() {
                                         Button(
                                             onClick = {
                                                 showModal = false
-                                                exoPlayerAudioPlayer.pause()
                                             },
                                             colors = ButtonDefaults.buttonColors(
                                                 containerColor = Color.White.copy(
@@ -734,9 +761,13 @@ class PlaylistActivity : ComponentActivity() {
         }
     }
 
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) enterImmersiveMode()
+    }
+
     override fun onDestroy() {
         super.onDestroy()
-        exoPlayerAudioPlayer.release()
     }
 
     private fun formatMillis(millis: Long): String {
@@ -756,7 +787,7 @@ private fun ColumnScope.AudioTabContent(
     audioDurationCache: MutableMap<String, Long>,
     menuOpenedForFilePath: String?,
     onMenuOpenedChange: (String?) -> Unit,
-    onAudioSelected: (File) -> Unit,
+    onAudioSelected: (File, List<File>) -> Unit,
     onMoveToPlaylist: (File) -> Unit,
     onRenameAudio: (File, String) -> Unit,
     resolveAudioDuration: (String) -> Long,
@@ -778,6 +809,12 @@ private fun ColumnScope.AudioTabContent(
             it.name.startsWith("audio_", ignoreCase = true) ||
                 (!it.name.startsWith("denoised_", ignoreCase = true) &&
                     !it.name.startsWith("processed_", ignoreCase = true))
+        }
+    }
+    val playbackOrder = remember(processedFiles, originalFiles, showProcessedCategory, showOriginalCategory) {
+        buildList {
+            if (showProcessedCategory) addAll(processedFiles)
+            if (showOriginalCategory) addAll(originalFiles)
         }
     }
 
@@ -847,7 +884,7 @@ private fun ColumnScope.AudioTabContent(
                         shape = MaterialTheme.shapes.medium
                     )
                     .padding(12.dp)
-                    .clickable { onAudioSelected(file) },
+                    .clickable { onAudioSelected(file, playbackOrder) },
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {

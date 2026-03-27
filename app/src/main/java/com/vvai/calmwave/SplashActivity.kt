@@ -16,11 +16,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import com.vvai.calmwave.data.remote.ApiClient
+import com.vvai.calmwave.util.enterImmersiveMode
 import kotlinx.coroutines.delay
 
 class SplashActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enterImmersiveMode()
         val authPrefs = getSharedPreferences("calmwave_auth", MODE_PRIVATE)
         val savedToken = authPrefs.getString("access_token", null)
         if (!savedToken.isNullOrBlank()) {
@@ -71,5 +73,10 @@ class SplashActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) enterImmersiveMode()
     }
 }

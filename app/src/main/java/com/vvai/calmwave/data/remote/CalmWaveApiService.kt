@@ -22,6 +22,9 @@ interface CalmWaveApiService {
     
     @POST("api/auth/register")
     suspend fun register(@Body request: RegisterRequest): Response<LoginResponse>
+
+    @POST("auth/register")
+    suspend fun registerNoApiPrefix(@Body request: RegisterRequest): Response<LoginResponse>
     
     @GET("api/auth/me")
     suspend fun getCurrentUser(): Response<User>
@@ -53,6 +56,11 @@ interface CalmWaveApiService {
      */
     @POST("api/audios/sync")
     suspend fun syncAudioMetadataJson(
+        @Body data: AudioSyncRequest
+    ): Response<Map<String, Any>>
+
+    @POST("audios/sync")
+    suspend fun syncAudioMetadataJsonNoApiPrefix(
         @Body data: AudioSyncRequest
     ): Response<Map<String, Any>>
 

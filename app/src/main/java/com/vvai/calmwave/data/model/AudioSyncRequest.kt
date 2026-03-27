@@ -11,7 +11,7 @@ data class AudioSyncRequest(
     val filename: String,
 
     @SerializedName("duration_seconds")
-    val durationSeconds: Int? = null,
+    val durationSeconds: Double? = null,
 
     @SerializedName("size_bytes")
     val sizeBytes: Long? = null,

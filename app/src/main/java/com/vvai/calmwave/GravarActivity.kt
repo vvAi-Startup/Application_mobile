@@ -48,6 +48,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.yield
 import com.vvai.calmwave.data.remote.ApiClient
+import com.vvai.calmwave.util.enterImmersiveMode
 
 class GravarActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels {
@@ -107,6 +108,7 @@ class GravarActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        enterImmersiveMode()
         
         // Define animação de entrada (deslizar da direita ao voltar de Playlists)
         overridePendingTransition(R.anim.slide_in_right, R.anim.slide_out_left)
@@ -334,6 +336,11 @@ class GravarActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) enterImmersiveMode()
     }
 }
 

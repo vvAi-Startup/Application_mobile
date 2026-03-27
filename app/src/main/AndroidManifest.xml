@@ -12,6 +12,7 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <!-- Permissão para salvar no diretório Downloads -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" 
         android:maxSdkVersion="28" />
@@ -56,6 +57,11 @@
             android:exported="false"
             android:theme="@style/Theme.CalmWave"
             android:screenOrientation="portrait" />
+        <activity
+            android:name=".CadastroActivity"
+            android:exported="false"
+            android:theme="@style/Theme.CalmWave"
+            android:screenOrientation="portrait" />
         <activity android:name=".MainActivity" />
         <activity
             android:name=".PrincipalActivity"
@@ -70,6 +76,12 @@
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="microphone" />
+
+        <service
+            android:name=".PlaybackForegroundService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
     </application>
 
 </manifest>
