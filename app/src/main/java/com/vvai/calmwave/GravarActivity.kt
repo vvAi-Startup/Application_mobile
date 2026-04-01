@@ -14,6 +14,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Pause
@@ -49,6 +50,9 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.yield
 import com.vvai.calmwave.data.remote.ApiClient
 import com.vvai.calmwave.util.enterImmersiveMode
+import com.vvai.calmwave.util.getUserAudioDir
+import com.vvai.calmwave.util.getUserScopedKey
+import java.io.File
 
 class GravarActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels {
@@ -121,7 +125,26 @@ class GravarActivity : ComponentActivity() {
                 val uiState by viewModel.uiState.collectAsState()
                 val isRecording = uiState.isRecording
                 val isPaused = uiState.isPaused
+                val isProcessing = uiState.isProcessing
                 val elapsedSeconds = uiState.currentPosition / 1000 // converte ms para segundos
+                var showFinishOptionsDialog by remember { mutableStateOf(false) }
+                var showRenameDialog by remember { mutableStateOf(false) }
+                var customAudioName by remember { mutableStateOf("") }
+                var currentRecordingFilePath by remember { mutableStateOf<String?>(null) }
+                var pendingFinalizeFilePath by remember { mutableStateOf<String?>(null) }
+                var wasProcessing by remember { mutableStateOf(false) }
+                var finishRequestedAtMs by remember { mutableStateOf<Long?>(null) }
+
+                val blinkTransition = rememberInfiniteTransition(label = "recordingBlink")
+                val blinkAlpha by blinkTransition.animateFloat(
+                    initialValue = 1f,
+                    targetValue = 0.25f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(durationMillis = 650, easing = LinearEasing),
+                        repeatMode = RepeatMode.Reverse
+                    ),
+                    label = "recordingBlinkAlpha"
+                )
 
                 // LaunchedEffect para atualizar o tempo de gravação
                 LaunchedEffect(isRecording, isPaused) {
@@ -129,6 +152,15 @@ class GravarActivity : ComponentActivity() {
                         viewModel.incrementCurrentPosition(1000) // incrementa 1 segundo (1000 ms)
                         kotlinx.coroutines.delay(1000)
                     }
+                }
+
+                LaunchedEffect(isProcessing) {
+                    if (wasProcessing && !isProcessing) {
+                        pendingFinalizeFilePath = findLatestProcessedFilePath(finishRequestedAtMs)
+                            ?: currentRecordingFilePath
+                        showFinishOptionsDialog = true
+                    }
+                    wasProcessing = isProcessing
                 }
 
                 Surface(
@@ -157,6 +189,7 @@ class GravarActivity : ComponentActivity() {
                                         .remove("access_token")
                                         .remove("user_name")
                                         .remove("user_email")
+                                        .remove("user_id")
                                         .apply()
                                     ApiClient.clear()
 
@@ -213,13 +246,29 @@ class GravarActivity : ComponentActivity() {
                                         )
 
                                         // Contador sincronizado com a gravação
-                                        Text(
-                                            text = formatDuration(elapsedSeconds),
-                                            style = MaterialTheme.typography.titleMedium,
-                                            fontSize = 18.sp,
-                                            modifier = Modifier.padding(vertical = 8.dp),
-                                            color = Color(0xFF0B6B63)
-                                        )
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.padding(vertical = 8.dp)
+                                        ) {
+                                            Text(
+                                                text = formatDuration(elapsedSeconds),
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontSize = 18.sp,
+                                                color = Color(0xFF0B6B63)
+                                            )
+
+                                            if (isRecording && !isPaused) {
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(10.dp)
+                                                        .background(
+                                                            Color.Red.copy(alpha = blinkAlpha),
+                                                            CircleShape
+                                                        )
+                                                )
+                                            }
+                                        }
 
                                         // Waveform mock semi-transparente
                                         Box(
@@ -257,8 +306,9 @@ class GravarActivity : ComponentActivity() {
                             if (!isRecording) {
                                 Button(
                                     onClick = {
-                                        // Inicia gravação
-                                        val filePath = "${applicationContext.getExternalFilesDir(null)?.absolutePath}/audio_${System.currentTimeMillis()}.wav"
+                                        val filePath = buildRecordingFilePath()
+                                        currentRecordingFilePath = filePath
+                                        pendingFinalizeFilePath = null
                                         viewModel.startRecording(filePath)
                                     },
                                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF12B089)),
@@ -277,6 +327,8 @@ class GravarActivity : ComponentActivity() {
                                 // Encerrar arredondado
                                 Button(
                                     onClick = {
+                                        finishRequestedAtMs = System.currentTimeMillis()
+                                        pendingFinalizeFilePath = null
                                         // Encerra gravação
                                         viewModel.stopRecordingAndProcess()
                                     },
@@ -326,6 +378,83 @@ class GravarActivity : ComponentActivity() {
                             }
                         }
 
+                        if (showFinishOptionsDialog) {
+                            AlertDialog(
+                                onDismissRequest = { showFinishOptionsDialog = false },
+                                title = { Text("Salvar gravação") },
+                                text = { Text("Gravação finalizada. Deseja salvar direto ou renomear o áudio?") },
+                                confirmButton = {
+                                    TextButton(onClick = {
+                                        pendingFinalizeFilePath = null
+                                        showFinishOptionsDialog = false
+                                    }) {
+                                        Text("Salvar direto")
+                                    }
+                                },
+                                dismissButton = {
+                                    Row {
+                                        TextButton(onClick = {
+                                            showFinishOptionsDialog = false
+                                            showRenameDialog = true
+                                        }) {
+                                            Text("Renomear")
+                                        }
+                                        TextButton(onClick = {
+                                            showFinishOptionsDialog = false
+                                            pendingFinalizeFilePath = null
+                                        }) {
+                                            Text("Cancelar")
+                                        }
+                                    }
+                                }
+                            )
+                        }
+
+                        if (showRenameDialog) {
+                            AlertDialog(
+                                onDismissRequest = { showRenameDialog = false },
+                                title = { Text("Nome do áudio") },
+                                text = {
+                                    OutlinedTextField(
+                                        value = customAudioName,
+                                        onValueChange = { customAudioName = it },
+                                        singleLine = true,
+                                        label = { Text("Ex: minha_gravacao") }
+                                    )
+                                },
+                                confirmButton = {
+                                    TextButton(onClick = {
+                                        val sourcePath = pendingFinalizeFilePath
+                                        if (sourcePath.isNullOrBlank()) {
+                                            Toast.makeText(this@GravarActivity, "Arquivo não encontrado para renomear", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            val saved = saveAudioDisplayName(sourcePath, customAudioName)
+                                            if (saved) {
+                                                currentRecordingFilePath = sourcePath
+                                                Toast.makeText(this@GravarActivity, "Áudio renomeado com sucesso", Toast.LENGTH_SHORT).show()
+                                            } else {
+                                                Toast.makeText(this@GravarActivity, "Não foi possível renomear o áudio", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                        pendingFinalizeFilePath = null
+                                        customAudioName = ""
+                                        showRenameDialog = false
+                                    }) {
+                                        Text("Salvar")
+                                    }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = {
+                                        pendingFinalizeFilePath = null
+                                        customAudioName = ""
+                                        showRenameDialog = false
+                                    }) {
+                                        Text("Cancelar")
+                                    }
+                                }
+                            )
+                        }
+
                         BottomNavigationBar(
                             selected = "Gravação",
                             modifier = Modifier
@@ -341,6 +470,78 @@ class GravarActivity : ComponentActivity() {
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) enterImmersiveMode()
+    }
+
+    private fun buildRecordingFilePath(customName: String? = null): String {
+        val directory = getUserAudioDir(applicationContext).absolutePath
+        val sanitizedName = customName
+            ?.trim()
+            ?.replace(Regex("[^a-zA-Z0-9_-]"), "_")
+            ?.trim('_')
+            ?.takeIf { it.isNotBlank() }
+
+        val fileName = if (sanitizedName.isNullOrBlank()) {
+            "audio_${System.currentTimeMillis()}"
+        } else {
+            sanitizedName
+        }
+
+        var target = File(directory, "$fileName.wav")
+        if (target.exists()) {
+            target = File(directory, "${fileName}_${System.currentTimeMillis()}.wav")
+        }
+
+        return target.absolutePath
+    }
+
+    private fun saveAudioDisplayName(filePath: String, newName: String): Boolean {
+        val sanitizedName = newName
+            .trim()
+            .replace(Regex("[^a-zA-Z0-9_-]"), "_")
+            .trim('_')
+            .takeIf { it.isNotBlank() }
+            ?: return false
+
+        val prefs = getSharedPreferences("playlists_prefs", MODE_PRIVATE)
+        val displayNamesKey = getUserScopedKey(this, "audioDisplayNames")
+        val raw = prefs.getString(displayNamesKey, null)
+        val displayMap = mutableMapOf<String, String>()
+
+        if (!raw.isNullOrBlank()) {
+            raw.split("||").forEach { entry ->
+                val parts = entry.split("|")
+                if (parts.size == 2) {
+                    displayMap[parts[0]] = parts[1]
+                }
+            }
+        }
+
+        displayMap[filePath] = sanitizedName
+        val serialized = displayMap.entries.joinToString("||") { it.key + "|" + it.value }
+        prefs.edit().putString(displayNamesKey, serialized).apply()
+        return true
+    }
+
+    private fun findLatestProcessedFilePath(afterMillis: Long? = null): String? {
+        val dir = getUserAudioDir(applicationContext)
+        val candidates = dir.listFiles { file ->
+            file.isFile && file.name.endsWith(".wav", ignoreCase = true) &&
+                (file.name.startsWith("denoised_", ignoreCase = true) ||
+                    file.name.startsWith("processed_", ignoreCase = true))
+        }?.toList().orEmpty()
+
+        if (candidates.isEmpty()) return null
+
+        val filtered = if (afterMillis != null) {
+            candidates.filter { it.lastModified() >= (afterMillis - 5_000L) }
+        } else {
+            candidates
+        }
+
+        val chosen = (if (filtered.isNotEmpty()) filtered else candidates)
+            .maxByOrNull { it.lastModified() }
+
+        return chosen?.absolutePath
     }
 }
 

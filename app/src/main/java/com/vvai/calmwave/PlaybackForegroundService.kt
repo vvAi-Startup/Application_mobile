@@ -79,11 +79,21 @@ class PlaybackForegroundService : Service() {
 
     private var notificationManager: PlayerNotificationManager? = null
     private val player: ExoPlayer by lazy { PlaybackPlayerHolder.getPlayer(this) }
+    private var startedInForeground = false
+    private val playerListener = object : Player.Listener {
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            if (startedInForeground && playbackState == Player.STATE_IDLE && !player.playWhenReady) {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+            }
+        }
+    }
 
     override fun onCreate() {
         super.onCreate()
         createChannelIfNeeded()
         setupNotificationManager()
+        player.addListener(playerListener)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -103,6 +113,7 @@ class PlaybackForegroundService : Service() {
     }
 
     override fun onDestroy() {
+        player.removeListener(playerListener)
         notificationManager?.setPlayer(null)
         notificationManager = null
         super.onDestroy()
@@ -145,6 +156,7 @@ class PlaybackForegroundService : Service() {
             .setNotificationListener(object : PlayerNotificationManager.NotificationListener {
                 override fun onNotificationPosted(notificationId: Int, notification: Notification, ongoing: Boolean) {
                     if (ongoing) {
+                        startedInForeground = true
                         startForeground(notificationId, notification)
                     } else {
                         stopForeground(STOP_FOREGROUND_DETACH)
@@ -166,6 +178,7 @@ class PlaybackForegroundService : Service() {
                 setUsePlayPauseActions(true)
                 setUseFastForwardAction(false)
                 setUseRewindAction(false)
+                setUseStopAction(true)
                 setPriority(NotificationManagerCompat.IMPORTANCE_LOW)
                 setSmallIcon(R.mipmap.ic_launcher)
                 setPlayer(player)

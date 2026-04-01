@@ -28,7 +28,6 @@ class ExoPlayerAudioPlayer(private val context: Context) {
 
     fun pause() {
         exoPlayer.pause()
-        PlaybackForegroundService.stop(context)
     }
 
     fun next() {
@@ -44,6 +43,13 @@ class ExoPlayerAudioPlayer(private val context: Context) {
     }
 
     fun release() {
+        exoPlayer.pause()
+        exoPlayer.stop()
+        exoPlayer.clearMediaItems()
+        PlaybackForegroundService.stop(context)
+    }
+
+    fun stopAllPlayback() {
         exoPlayer.pause()
         exoPlayer.stop()
         exoPlayer.clearMediaItems()

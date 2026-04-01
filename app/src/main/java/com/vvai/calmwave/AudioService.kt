@@ -11,6 +11,7 @@ import android.media.AudioManager
 import android.media.AudioTrack
 import android.media.AudioTrack.MODE_STREAM
 import com.vvai.calmwave.data.remote.ApiClient
+import com.vvai.calmwave.util.getUserAudioDir
 import com.vvai.calmwave.util.ResilientDns
 import kotlinx.coroutines.*
 import kotlinx.coroutines.Job
@@ -39,7 +40,7 @@ class AudioService {
     fun connectWebSocket(apiWsUrl: String, context: Context, onConnected: (() -> Unit)? = null, onFailure: ((Throwable) -> Unit)? = null) {
         try {
             // Prepare output file for processed audio
-            val outDir = context.getExternalFilesDir(null)
+            val outDir = getUserAudioDir(context)
             processedOutputFile = File(outDir, "denoised_${System.currentTimeMillis()}.wav")
             processedOutputStream = FileOutputStream(processedOutputFile!!)
             writeWavHeader(processedOutputStream!!) // cabeçalho temporário
@@ -249,7 +250,7 @@ class AudioService {
         streamingTrack?.play()
 
         // Prepara arquivo de saída para salvar o áudio processado
-        val outDir = context.getExternalFilesDir(null)
+        val outDir = getUserAudioDir(context)
         streamingOutputFile = File(outDir, "denoised_${System.currentTimeMillis()}.wav")
         streamingOutputStream = FileOutputStream(streamingOutputFile!!)
         writeWavHeader(streamingOutputStream!!)

@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.*
@@ -49,6 +50,8 @@ import java.io.File
 import com.vvai.calmwave.R
 import com.vvai.calmwave.data.remote.ApiClient
 import com.vvai.calmwave.util.enterImmersiveMode
+import com.vvai.calmwave.util.getUserAudioDir
+import com.vvai.calmwave.util.getUserScopedKey
 import com.vvai.calmwave.ui.theme.CalmWaveTheme
 
 private const val PREFS_PLAYLISTS = "playlists"
@@ -122,22 +125,29 @@ class PlaylistActivity : ComponentActivity() {
             fun savePlaylists() {
                 val prefs = context.getSharedPreferences("playlists_prefs", 0)
                 val editor = prefs.edit()
+                val playlistsKey = getUserScopedKey(context, PREFS_PLAYLISTS)
+                val audioMapKey = getUserScopedKey(context, PREFS_AUDIO_TO_PLAYLIST_MAP)
+                val displayNamesKey = getUserScopedKey(context, PREFS_AUDIO_DISPLAY_NAMES)
                 val playlistJson = playlists.joinToString("||") {
                     listOf(it.id, it.title, it.subtitle, it.color.value).joinToString("|")
                 }
-                editor.putString(PREFS_PLAYLISTS, playlistJson)
+                editor.putString(playlistsKey, playlistJson)
                 val audioMapJson =
                     audioToPlaylistMap.entries.joinToString("||") { it.key + "|" + it.value }
-                editor.putString(PREFS_AUDIO_TO_PLAYLIST_MAP, audioMapJson)
+                editor.putString(audioMapKey, audioMapJson)
                 val audioDisplayNamesJson =
                     audioDisplayNames.entries.joinToString("||") { it.key + "|" + it.value }
-                editor.putString(PREFS_AUDIO_DISPLAY_NAMES, audioDisplayNamesJson)
+                editor.putString(displayNamesKey, audioDisplayNamesJson)
                 editor.apply()
             }
 
             fun loadPlaylists() {
                 val prefs = context.getSharedPreferences("playlists_prefs", 0)
-                val playlistJson = prefs.getString(PREFS_PLAYLISTS, null)
+                val playlistsKey = getUserScopedKey(context, PREFS_PLAYLISTS)
+                val audioMapKey = getUserScopedKey(context, PREFS_AUDIO_TO_PLAYLIST_MAP)
+                val displayNamesKey = getUserScopedKey(context, PREFS_AUDIO_DISPLAY_NAMES)
+
+                val playlistJson = prefs.getString(playlistsKey, null)
                 playlists.clear()
                 if (!playlistJson.isNullOrBlank()) {
                     playlistJson.split("||").forEach {
@@ -156,7 +166,7 @@ class PlaylistActivity : ComponentActivity() {
                 } else {
                     // não carregar playlists padrão — começar com lista vazia e instruir o usuário a criar
                 }
-                val audioMapJson = prefs.getString(PREFS_AUDIO_TO_PLAYLIST_MAP, null)
+                val audioMapJson = prefs.getString(audioMapKey, null)
                 audioToPlaylistMap.clear()
                 if (!audioMapJson.isNullOrBlank()) {
                     audioMapJson.split("||").forEach {
@@ -165,7 +175,7 @@ class PlaylistActivity : ComponentActivity() {
                     }
                 }
 
-                val audioDisplayNamesJson = prefs.getString(PREFS_AUDIO_DISPLAY_NAMES, null)
+                val audioDisplayNamesJson = prefs.getString(displayNamesKey, null)
                 audioDisplayNames.clear()
                 if (!audioDisplayNamesJson.isNullOrBlank()) {
                     audioDisplayNamesJson.split("||").forEach {
@@ -190,7 +200,7 @@ class PlaylistActivity : ComponentActivity() {
             val wavFiles = remember { mutableStateListOf<File>() }
 
             fun refreshWavFiles() {
-                val dir = context.getExternalFilesDir(null)
+                val dir = getUserAudioDir(context)
                 val files = dir?.listFiles { f -> f.isFile && f.name.endsWith(".wav", ignoreCase = true) }
                     ?.sortedByDescending { it.lastModified() }
                     ?: emptyList()
@@ -234,6 +244,7 @@ class PlaylistActivity : ComponentActivity() {
                                         .remove("access_token")
                                         .remove("user_name")
                                         .remove("user_email")
+                                        .remove("user_id")
                                         .apply()
                                     ApiClient.clear()
 
@@ -484,6 +495,18 @@ class PlaylistActivity : ComponentActivity() {
                                                     imageVector = Icons.Filled.SkipNext,
                                                     contentDescription = "Próximo",
                                                     tint = Color.White
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            IconButton(onClick = {
+                                                exoPlayerAudioPlayer.stopAllPlayback()
+                                                showModal = false
+                                            }) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Stop,
+                                                    contentDescription = "Parar",
+                                                    tint = Color.White,
+                                                    modifier = Modifier.size(34.dp)
                                                 )
                                             }
                                         }

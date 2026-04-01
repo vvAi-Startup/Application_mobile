@@ -101,6 +101,7 @@ class LoginActivity : ComponentActivity() {
                             .putString("access_token", token)
                             .putString("user_name", body?.user?.name)
                             .putString("user_email", body?.user?.email ?: email.trim())
+                            .putLong("user_id", body?.user?.id ?: -1L)
                             .apply()
                         ApiClient.setAuthToken(token)
 
