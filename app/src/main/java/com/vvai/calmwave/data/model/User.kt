@@ -8,6 +8,12 @@ import com.google.gson.annotations.SerializedName
 data class LoginResponse(
     @SerializedName(value = "token", alternate = ["access_token", "accessToken"])
     val token: String,
+    @SerializedName(value = "refresh_token", alternate = ["refreshToken"])
+    val refreshToken: String? = null,
+    @SerializedName(value = "expires_in", alternate = ["expiresIn"])
+    val expiresInSeconds: Long? = null,
+    @SerializedName(value = "expires_at", alternate = ["expiresAt"])
+    val expiresAt: Long? = null,
     val user: User? = null
 )
 

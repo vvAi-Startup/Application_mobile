@@ -16,17 +16,23 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import com.vvai.calmwave.data.remote.ApiClient
+import com.vvai.calmwave.util.clearAuthSession
 import com.vvai.calmwave.util.enterImmersiveMode
+import com.vvai.calmwave.util.getAccessToken
+import com.vvai.calmwave.util.isAccessTokenExpired
 import kotlinx.coroutines.delay
 
 class SplashActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enterImmersiveMode()
-        val authPrefs = getSharedPreferences("calmwave_auth", MODE_PRIVATE)
-        val savedToken = authPrefs.getString("access_token", null)
-        if (!savedToken.isNullOrBlank()) {
+        val savedToken = getAccessToken(this)
+        val hasValidToken = !savedToken.isNullOrBlank() && !isAccessTokenExpired(this)
+        if (hasValidToken) {
             ApiClient.setAuthToken(savedToken)
+        } else if (!savedToken.isNullOrBlank()) {
+            clearAuthSession(this)
+            ApiClient.clear()
         }
 
         // check if splash was already shown
@@ -34,7 +40,7 @@ class SplashActivity : ComponentActivity() {
         val alreadyShown = prefs.getBoolean("splash_shown", false)
         if (alreadyShown) {
             // skip splash and go to Login/Principal according to auth state
-            val target = if (savedToken.isNullOrBlank()) LoginActivity::class.java else PrincipalActivity::class.java
+            val target = if (!hasValidToken) LoginActivity::class.java else PrincipalActivity::class.java
             val intent = Intent(this, target).apply {
                 addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             }
@@ -62,7 +68,7 @@ class SplashActivity : ComponentActivity() {
                         // mark splash as shown so next app open skips it
                         prefs.edit().putBoolean("splash_shown", true).apply()
                         // after progress completes, go to Login/Principal according to auth state
-                        val target = if (savedToken.isNullOrBlank()) LoginActivity::class.java else PrincipalActivity::class.java
+                        val target = if (!hasValidToken) LoginActivity::class.java else PrincipalActivity::class.java
                         val intent2 = Intent(this@SplashActivity, target).apply {
                             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                         }

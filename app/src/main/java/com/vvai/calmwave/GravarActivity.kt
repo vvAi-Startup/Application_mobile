@@ -13,6 +13,7 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -49,6 +50,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.yield
 import com.vvai.calmwave.data.remote.ApiClient
+import com.vvai.calmwave.util.clearAuthSession
 import com.vvai.calmwave.util.enterImmersiveMode
 import com.vvai.calmwave.util.getUserAudioDir
 import com.vvai.calmwave.util.getUserScopedKey
@@ -132,6 +134,11 @@ class GravarActivity : ComponentActivity() {
                 var customAudioName by remember { mutableStateOf("") }
                 var currentRecordingFilePath by remember { mutableStateOf<String?>(null) }
                 var pendingFinalizeFilePath by remember { mutableStateOf<String?>(null) }
+                var showPostSavePlaylistDialog by remember { mutableStateOf(false) }
+                var showAddToPlaylistDialog by remember { mutableStateOf(false) }
+                var availablePlaylists by remember { mutableStateOf<List<String>>(emptyList()) }
+                var selectedPlaylistTitle by remember { mutableStateOf<String?>(null) }
+                var newPlaylistName by remember { mutableStateOf("") }
                 var wasProcessing by remember { mutableStateOf(false) }
                 var finishRequestedAtMs by remember { mutableStateOf<Long?>(null) }
 
@@ -184,13 +191,7 @@ class GravarActivity : ComponentActivity() {
                                 title = "Gravação",
                                 modifier = Modifier.fillMaxWidth(),
                                 onLogoutClick = {
-                                    val authPrefs = getSharedPreferences("calmwave_auth", MODE_PRIVATE)
-                                    authPrefs.edit()
-                                        .remove("access_token")
-                                        .remove("user_name")
-                                        .remove("user_email")
-                                        .remove("user_id")
-                                        .apply()
+                                    clearAuthSession(this@GravarActivity)
                                     ApiClient.clear()
 
                                     val intent = Intent(this@GravarActivity, LoginActivity::class.java).apply {
@@ -311,6 +312,7 @@ class GravarActivity : ComponentActivity() {
                                         pendingFinalizeFilePath = null
                                         viewModel.startRecording(filePath)
                                     },
+                                    enabled = !isProcessing,
                                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF12B089)),
                                     shape = RoundedCornerShape(40.dp),
                                     modifier = Modifier
@@ -332,6 +334,7 @@ class GravarActivity : ComponentActivity() {
                                         // Encerra gravação
                                         viewModel.stopRecordingAndProcess()
                                     },
+                                    enabled = !isProcessing,
                                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0B6B63)),
                                     shape = RoundedCornerShape(40.dp),
                                     modifier = Modifier
@@ -358,6 +361,7 @@ class GravarActivity : ComponentActivity() {
                                             viewModel.pauseRecording()
                                         }
                                     },
+                                    enabled = !isProcessing,
                                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF12B089)),
                                     shape = RoundedCornerShape(40.dp),
                                     modifier = Modifier
@@ -381,30 +385,200 @@ class GravarActivity : ComponentActivity() {
                         if (showFinishOptionsDialog) {
                             AlertDialog(
                                 onDismissRequest = { showFinishOptionsDialog = false },
-                                title = { Text("Salvar gravação") },
-                                text = { Text("Gravação finalizada. Deseja salvar direto ou renomear o áudio?") },
+                                shape = RoundedCornerShape(22.dp),
+                                containerColor = Color(0xFFF3FCFA),
+                                title = {
+                                    Column {
+                                        Text("Salvar gravação", fontWeight = FontWeight.Bold, color = Color(0xFF0B6B63))
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text("Escolha como deseja continuar", style = MaterialTheme.typography.bodySmall, color = Color(0xFF4F6C69))
+                                    }
+                                },
+                                text = {
+                                    Text(
+                                        "Gravação finalizada com sucesso. Você pode salvar agora ou editar o nome do áudio.",
+                                        color = Color(0xFF2F4F4A)
+                                    )
+                                },
                                 confirmButton = {
-                                    TextButton(onClick = {
-                                        pendingFinalizeFilePath = null
+                                    Button(
+                                        onClick = {
                                         showFinishOptionsDialog = false
-                                    }) {
+                                        showPostSavePlaylistDialog = true
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF12B089)),
+                                        shape = RoundedCornerShape(14.dp)
+                                    ) {
                                         Text("Salvar direto")
                                     }
                                 },
                                 dismissButton = {
-                                    Row {
-                                        TextButton(onClick = {
-                                            showFinishOptionsDialog = false
-                                            showRenameDialog = true
-                                        }) {
-                                            Text("Renomear")
+                                    OutlinedButton(
+                                        onClick = {
+                                        showFinishOptionsDialog = false
+                                        showRenameDialog = true
+                                        },
+                                        shape = RoundedCornerShape(14.dp),
+                                        border = ButtonDefaults.outlinedButtonBorder.copy(width = 1.dp)
+                                    ) {
+                                        Text("Renomear")
+                                    }
+                                }
+                            )
+                        }
+
+                        if (showPostSavePlaylistDialog) {
+                            AlertDialog(
+                                onDismissRequest = {
+                                    pendingFinalizeFilePath = null
+                                    showPostSavePlaylistDialog = false
+                                },
+                                shape = RoundedCornerShape(22.dp),
+                                containerColor = Color(0xFFF3FCFA),
+                                title = {
+                                    Text("Adicionar à playlist", fontWeight = FontWeight.Bold, color = Color(0xFF0B6B63))
+                                },
+                                text = {
+                                    Text("Deseja organizar este áudio em uma playlist agora?", color = Color(0xFF2F4F4A))
+                                },
+                                confirmButton = {
+                                    Button(
+                                        onClick = {
+                                        val playlists = getUserPlaylistTitles()
+                                        availablePlaylists = playlists
+                                        selectedPlaylistTitle = playlists.firstOrNull()
+                                        showAddToPlaylistDialog = true
+                                        showPostSavePlaylistDialog = false
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF12B089)),
+                                        shape = RoundedCornerShape(14.dp)
+                                    ) {
+                                        Text("Adicionar")
+                                    }
+                                },
+                                dismissButton = {
+                                    OutlinedButton(
+                                        onClick = {
+                                        pendingFinalizeFilePath = null
+                                        showPostSavePlaylistDialog = false
+                                        },
+                                        shape = RoundedCornerShape(14.dp)
+                                    ) {
+                                        Text("Não")
+                                    }
+                                }
+                            )
+                        }
+
+                        if (showAddToPlaylistDialog) {
+                            AlertDialog(
+                                onDismissRequest = {
+                                    pendingFinalizeFilePath = null
+                                    showAddToPlaylistDialog = false
+                                },
+                                shape = RoundedCornerShape(22.dp),
+                                containerColor = Color(0xFFF3FCFA),
+                                title = {
+                                    Text("Adicionar à playlist", fontWeight = FontWeight.Bold, color = Color(0xFF0B6B63))
+                                },
+                                text = {
+                                    Column {
+                                        if (availablePlaylists.isEmpty()) {
+                                            Text("Nenhuma playlist encontrada. Crie uma nova abaixo.", color = Color(0xFF2F4F4A))
+                                        } else {
+                                            availablePlaylists.forEach { playlistTitle ->
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(vertical = 6.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    RadioButton(
+                                                        selected = selectedPlaylistTitle == playlistTitle,
+                                                        onClick = { selectedPlaylistTitle = playlistTitle },
+                                                        colors = RadioButtonDefaults.colors(selectedColor = Color(0xFF12B089))
+                                                    )
+                                                    Text(
+                                                        text = playlistTitle,
+                                                        modifier = Modifier.padding(start = 6.dp),
+                                                        color = Color(0xFF1C3F3A)
+                                                    )
+                                                }
+                                            }
                                         }
-                                        TextButton(onClick = {
-                                            showFinishOptionsDialog = false
-                                            pendingFinalizeFilePath = null
-                                        }) {
-                                            Text("Cancelar")
+
+                                        Spacer(modifier = Modifier.height(10.dp))
+                                        HorizontalDivider()
+                                        Spacer(modifier = Modifier.height(10.dp))
+
+                                        OutlinedTextField(
+                                            value = newPlaylistName,
+                                            onValueChange = { newPlaylistName = it },
+                                            singleLine = true,
+                                            label = { Text("Nova playlist") },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(14.dp),
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedBorderColor = Color(0xFF12B089),
+                                                focusedLabelColor = Color(0xFF0B6B63)
+                                            )
+                                        )
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.End
+                                        ) {
+                                            TextButton(onClick = {
+                                                val createdTitle = createPlaylist(newPlaylistName)
+                                                if (!createdTitle.isNullOrBlank()) {
+                                                    availablePlaylists = getUserPlaylistTitles()
+                                                    selectedPlaylistTitle = createdTitle
+                                                    newPlaylistName = ""
+                                                    Toast.makeText(this@GravarActivity, "Playlist criada", Toast.LENGTH_SHORT).show()
+                                                } else {
+                                                    Toast.makeText(this@GravarActivity, "Nome inválido ou playlist já existe", Toast.LENGTH_SHORT).show()
+                                                }
+                                            }) {
+                                                Text("Criar playlist")
+                                            }
                                         }
+                                    }
+                                },
+                                confirmButton = {
+                                    Button(
+                                        onClick = {
+                                        val sourcePath = pendingFinalizeFilePath
+                                        val targetPlaylist = selectedPlaylistTitle
+                                        if (!sourcePath.isNullOrBlank() && !targetPlaylist.isNullOrBlank()) {
+                                            val saved = assignAudioToPlaylist(sourcePath, targetPlaylist)
+                                            if (saved) {
+                                                Toast.makeText(this@GravarActivity, "Áudio adicionado à playlist", Toast.LENGTH_SHORT).show()
+                                            } else {
+                                                Toast.makeText(this@GravarActivity, "Não foi possível adicionar à playlist", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                        pendingFinalizeFilePath = null
+                                        selectedPlaylistTitle = null
+                                        newPlaylistName = ""
+                                        showAddToPlaylistDialog = false
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF12B089)),
+                                        shape = RoundedCornerShape(14.dp)
+                                    ) {
+                                        Text("Adicionar")
+                                    }
+                                },
+                                dismissButton = {
+                                    OutlinedButton(
+                                        onClick = {
+                                        pendingFinalizeFilePath = null
+                                        selectedPlaylistTitle = null
+                                        newPlaylistName = ""
+                                        showAddToPlaylistDialog = false
+                                        },
+                                        shape = RoundedCornerShape(14.dp)
+                                    ) {
+                                        Text("Depois")
                                     }
                                 }
                             )
@@ -413,17 +587,27 @@ class GravarActivity : ComponentActivity() {
                         if (showRenameDialog) {
                             AlertDialog(
                                 onDismissRequest = { showRenameDialog = false },
-                                title = { Text("Nome do áudio") },
+                                shape = RoundedCornerShape(22.dp),
+                                containerColor = Color(0xFFF3FCFA),
+                                title = {
+                                    Text("Nome do áudio", fontWeight = FontWeight.Bold, color = Color(0xFF0B6B63))
+                                },
                                 text = {
                                     OutlinedTextField(
                                         value = customAudioName,
                                         onValueChange = { customAudioName = it },
                                         singleLine = true,
-                                        label = { Text("Ex: minha_gravacao") }
+                                        label = { Text("Ex: minha_gravacao") },
+                                        shape = RoundedCornerShape(14.dp),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedBorderColor = Color(0xFF12B089),
+                                            focusedLabelColor = Color(0xFF0B6B63)
+                                        )
                                     )
                                 },
                                 confirmButton = {
-                                    TextButton(onClick = {
+                                    Button(
+                                        onClick = {
                                         val sourcePath = pendingFinalizeFilePath
                                         if (sourcePath.isNullOrBlank()) {
                                             Toast.makeText(this@GravarActivity, "Arquivo não encontrado para renomear", Toast.LENGTH_SHORT).show()
@@ -432,27 +616,69 @@ class GravarActivity : ComponentActivity() {
                                             if (saved) {
                                                 currentRecordingFilePath = sourcePath
                                                 Toast.makeText(this@GravarActivity, "Áudio renomeado com sucesso", Toast.LENGTH_SHORT).show()
+                                                showPostSavePlaylistDialog = true
                                             } else {
                                                 Toast.makeText(this@GravarActivity, "Não foi possível renomear o áudio", Toast.LENGTH_SHORT).show()
+                                                pendingFinalizeFilePath = null
                                             }
                                         }
-                                        pendingFinalizeFilePath = null
                                         customAudioName = ""
                                         showRenameDialog = false
-                                    }) {
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF12B089)),
+                                        shape = RoundedCornerShape(14.dp)
+                                    ) {
                                         Text("Salvar")
                                     }
                                 },
                                 dismissButton = {
-                                    TextButton(onClick = {
+                                    OutlinedButton(
+                                        onClick = {
                                         pendingFinalizeFilePath = null
                                         customAudioName = ""
                                         showRenameDialog = false
-                                    }) {
-                                        Text("Cancelar")
+                                        },
+                                        shape = RoundedCornerShape(14.dp)
+                                    ) {
+                                        Text("Fechar")
                                     }
                                 }
                             )
+                        }
+
+                        if (isProcessing) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(Color.Black.copy(alpha = 0.28f))
+                                    .clickable(enabled = true, onClick = {}),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Surface(
+                                    color = Color.White,
+                                    shape = RoundedCornerShape(16.dp),
+                                    tonalElevation = 8.dp
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        CircularProgressIndicator(color = Color(0xFF12B089))
+                                        Spacer(modifier = Modifier.height(10.dp))
+                                        Text(
+                                            text = "Finalizando gravação...",
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = Color(0xFF0B6B63)
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = "Aguarde o áudio terminar para salvar",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = Color(0xFF3D3D3D)
+                                        )
+                                    }
+                                }
+                            }
                         }
 
                         BottomNavigationBar(
@@ -492,6 +718,72 @@ class GravarActivity : ComponentActivity() {
         }
 
         return target.absolutePath
+    }
+
+    private fun getUserPlaylistTitles(): List<String> {
+        val prefs = getSharedPreferences("playlists_prefs", MODE_PRIVATE)
+        val playlistsKey = getUserScopedKey(this, "playlists")
+        val raw = prefs.getString(playlistsKey, null).orEmpty()
+        if (raw.isBlank()) return emptyList()
+
+        return raw
+            .split("||")
+            .mapNotNull { entry ->
+                val parts = entry.split("|")
+                parts.getOrNull(1)?.trim()?.takeIf { it.isNotBlank() }
+            }
+            .distinct()
+    }
+
+    private fun assignAudioToPlaylist(filePath: String, playlistTitle: String): Boolean {
+        if (filePath.isBlank() || playlistTitle.isBlank()) return false
+
+        val prefs = getSharedPreferences("playlists_prefs", MODE_PRIVATE)
+        val audioMapKey = getUserScopedKey(this, "audioToPlaylistMap")
+        val raw = prefs.getString(audioMapKey, null)
+        val audioMap = mutableMapOf<String, String>()
+
+        if (!raw.isNullOrBlank()) {
+            raw.split("||").forEach { entry ->
+                val parts = entry.split("|")
+                if (parts.size == 2) {
+                    audioMap[parts[0]] = parts[1]
+                }
+            }
+        }
+
+        audioMap[filePath] = playlistTitle
+        val serialized = audioMap.entries.joinToString("||") { it.key + "|" + it.value }
+        prefs.edit().putString(audioMapKey, serialized).apply()
+        return true
+    }
+
+    private fun createPlaylist(rawTitle: String): String? {
+        val title = rawTitle.trim()
+        if (title.isBlank()) return null
+
+        val prefs = getSharedPreferences("playlists_prefs", MODE_PRIVATE)
+        val playlistsKey = getUserScopedKey(this, "playlists")
+        val existing = prefs.getString(playlistsKey, null).orEmpty()
+        val items = if (existing.isBlank()) mutableListOf() else existing.split("||").toMutableList()
+
+        val parsed = items.mapNotNull { entry ->
+            val parts = entry.split("|")
+            if (parts.size == 4) parts else null
+        }
+
+        if (parsed.any { it[1].equals(title, ignoreCase = true) }) {
+            return null
+        }
+
+        val nextId = (parsed.mapNotNull { it[0].toIntOrNull() }.maxOrNull() ?: 0) + 1
+        val defaultColorValue = Color(0xFF2DC9C6).value
+        val newEntry = listOf(nextId.toString(), title, "0/0 ÁUDIOS", defaultColorValue.toString())
+            .joinToString("|")
+
+        items.add(newEntry)
+        prefs.edit().putString(playlistsKey, items.joinToString("||")).apply()
+        return title
     }
 
     private fun saveAudioDisplayName(filePath: String, newName: String): Boolean {

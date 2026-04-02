@@ -46,12 +46,18 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
 import com.vvai.calmwave.data.model.RegisterRequest
 import com.vvai.calmwave.data.remote.ApiClient
+import com.vvai.calmwave.domain.usecase.RegistrationValidationResult
+import com.vvai.calmwave.domain.usecase.ValidateRegistrationInputUseCase
 import com.vvai.calmwave.util.enterImmersiveMode
+import com.vvai.calmwave.util.FunnelAnalyticsTracker
+import com.vvai.calmwave.util.saveAuthSession
 import com.vvai.calmwave.ui.theme.CalmWaveTheme
 import com.vvai.calmwave.ui.theme.FredokaFamily
 import kotlinx.coroutines.launch
 
 class CadastroActivity : ComponentActivity() {
+    private val validateRegistrationInputUseCase = ValidateRegistrationInputUseCase()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enterImmersiveMode()
@@ -82,24 +88,12 @@ class CadastroActivity : ComponentActivity() {
         confirmPassword: String,
         onResult: (Boolean, String?) -> Unit
     ) {
-        val emailRegex = Regex("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")
-        val passwordRegex = Regex("^(?=.*[A-Za-z])(?=.*\\d)(?=.*[^A-Za-z\\d]).{8,}$")
-
-        if (name.isBlank() || email.isBlank() || password.isBlank() || confirmPassword.isBlank()) {
-            onResult(false, "Preencha todos os campos")
-            return
-        }
-        if (!emailRegex.matches(email.trim())) {
-            onResult(false, "Email inválido")
-            return
-        }
-        if (!passwordRegex.matches(password)) {
-            onResult(false, "A senha deve ter no mínimo 8 caracteres, com letra, número e caractere especial")
-            return
-        }
-        if (password != confirmPassword) {
-            onResult(false, "As senhas não coincidem")
-            return
+        when (val validation = validateRegistrationInputUseCase.execute(name, email, password, confirmPassword)) {
+            is RegistrationValidationResult.Invalid -> {
+                onResult(false, validation.message)
+                return
+            }
+            RegistrationValidationResult.Valid -> Unit
         }
 
         lifecycleScope.launch {
@@ -122,13 +116,22 @@ class CadastroActivity : ComponentActivity() {
                     val token = body?.token
 
                     if (!token.isNullOrBlank()) {
-                        val prefs = getSharedPreferences("calmwave_auth", MODE_PRIVATE)
-                        prefs.edit()
-                            .putString("access_token", token)
-                            .putString("user_name", body.user?.name ?: name.trim())
-                            .putString("user_email", body.user?.email ?: email.trim())
-                            .putLong("user_id", body.user?.id ?: -1L)
-                            .apply()
+                        saveAuthSession(
+                            context = this@CadastroActivity,
+                            accessToken = token,
+                            userName = body.user?.name ?: name.trim(),
+                            userEmail = body.user?.email ?: email.trim(),
+                            userId = body.user?.id,
+                            refreshToken = body.refreshToken,
+                            expiresInSeconds = body.expiresInSeconds,
+                            expiresAtEpochMs = body.expiresAt
+                        )
+                        val analyticsRepository = com.vvai.calmwave.data.repository.AnalyticsRepository(this@CadastroActivity)
+                        FunnelAnalyticsTracker.trackSignupCompleted(
+                            context = this@CadastroActivity,
+                            repository = analyticsRepository,
+                            userId = body.user?.id
+                        )
                         ApiClient.setAuthToken(token)
 
                         onResult(true, null)
@@ -140,7 +143,20 @@ class CadastroActivity : ComponentActivity() {
                         onResult(false, "Resposta inválida da API")
                     }
                 } else {
-                    onResult(false, "Não foi possível concluir o cadastro")
+                    val backendError = response.errorBody()?.string().orEmpty().lowercase()
+                    val isEmailAlreadyRegistered = response.code() == 409 ||
+                        (backendError.contains("email") &&
+                            (backendError.contains("already") ||
+                                backendError.contains("exists") ||
+                                backendError.contains("cadastrado") ||
+                                backendError.contains("em uso") ||
+                                backendError.contains("duplic")))
+
+                    if (isEmailAlreadyRegistered) {
+                        onResult(false, "Este e-mail já está cadastrado")
+                    } else {
+                        onResult(false, "Não foi possível concluir o cadastro")
+                    }
                 }
             } catch (_: Exception) {
                 onResult(false, "Erro ao conectar com a API")

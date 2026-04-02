@@ -2,7 +2,11 @@ package com.vvai.calmwave
 
 import android.app.Application
 import android.util.Log
+import com.vvai.calmwave.data.remote.ApiClient
+import com.vvai.calmwave.data.repository.AnalyticsRepository
+import com.vvai.calmwave.util.FunnelAnalyticsTracker
 import com.vvai.calmwave.util.NetworkMonitor
+import com.vvai.calmwave.util.logDevicePerformanceProfile
 import com.vvai.calmwave.workers.SyncAnalyticsWorker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -27,6 +31,9 @@ class CalmWaveApplication : Application() {
         super.onCreate()
         
         Log.d(TAG, "Iniciando aplicação CalmWave")
+
+        ApiClient.initialize(this)
+        logDevicePerformanceProfile(this)
         
         // Inicializa monitor de rede
         networkMonitor = NetworkMonitor.getInstance(this)
@@ -35,6 +42,11 @@ class CalmWaveApplication : Application() {
         // Agenda sincronização periódica de analytics
         SyncAnalyticsWorker.schedulePeriodic(this)
         Log.d(TAG, "Sincronização periódica de analytics agendada")
+
+        applicationScope.launch(Dispatchers.IO) {
+            val repository = AnalyticsRepository(this@CalmWaveApplication)
+            FunnelAnalyticsTracker.trackAppOpen(this@CalmWaveApplication, repository)
+        }
         
         // Observa mudanças de conectividade para sincronizar quando ficar online
         observeNetworkChanges()

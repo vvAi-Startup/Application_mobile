@@ -18,6 +18,9 @@ interface PendingAudioUploadDao {
     @Query("SELECT COUNT(*) FROM pending_audio_uploads WHERE synced = 0")
     suspend fun countPendingUploads(): Int
 
+    @Query("SELECT filePath FROM pending_audio_uploads WHERE synced = 0")
+    suspend fun getPendingFilePaths(): List<String>
+
     @Query("UPDATE pending_audio_uploads SET synced = 1 WHERE id = :id")
     suspend fun markAsSynced(id: Long)
 

@@ -23,6 +23,7 @@ import com.vvai.calmwave.R
 import com.vvai.calmwave.ui.theme.titleTitle
 import android.content.Intent
 import com.vvai.calmwave.MainActivity
+import com.vvai.calmwave.util.getSecureAuthPrefs
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -45,7 +46,7 @@ fun TopBar(
     val clickCount = remember { mutableStateOf(0) }
     val showProfileMenu = remember { mutableStateOf(false) }
     val persistedUserName = remember {
-        val authPrefs = context.getSharedPreferences("calmwave_auth", android.content.Context.MODE_PRIVATE)
+        val authPrefs = getSecureAuthPrefs(context)
         authPrefs.getString("user_name", null)
             ?: authPrefs.getString("user_email", null)
     }

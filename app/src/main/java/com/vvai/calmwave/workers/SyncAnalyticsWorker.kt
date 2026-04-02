@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import androidx.work.*
 import com.vvai.calmwave.data.repository.AnalyticsRepository
+import com.vvai.calmwave.util.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
@@ -120,7 +121,7 @@ class SyncAnalyticsWorker(
                 )
             }
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Erro na sincronização: ${e.message}", e)
+            AppLogger.e(TAG, "WORK_SYNC_FAILED", "Erro na sincronização: ${e.message}", e)
             
             // Retry em caso de erro
             if (runAttemptCount < 3) {

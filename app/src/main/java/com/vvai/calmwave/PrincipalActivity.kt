@@ -24,6 +24,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -55,7 +56,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.vvai.calmwave.ui.theme.CalmWaveTheme
 import com.vvai.calmwave.data.remote.ApiClient
+import com.vvai.calmwave.util.clearAuthSession
 import com.vvai.calmwave.util.enterImmersiveMode
+import com.vvai.calmwave.util.getSecureAuthPrefs
 import com.vvai.calmwave.util.getUserScopedKey
 
 // Top-level model used by several composables
@@ -170,7 +173,7 @@ fun PrincipalScreen(modifier: Modifier = Modifier) {
     }
 
     fun loadLoggedUserName() {
-        val authPrefs = context.getSharedPreferences("calmwave_auth", Context.MODE_PRIVATE)
+        val authPrefs = getSecureAuthPrefs(context)
         val savedName = authPrefs.getString("user_name", null)
         val fallbackEmail = authPrefs.getString("user_email", null)
         loggedUserName = when {
@@ -232,13 +235,7 @@ fun PrincipalScreen(modifier: Modifier = Modifier) {
                 title = "Calm Wave",
                 userName = loggedUserName,
                 onLogoutClick = {
-                    val authPrefs = context.getSharedPreferences("calmwave_auth", Context.MODE_PRIVATE)
-                    authPrefs.edit()
-                        .remove("access_token")
-                        .remove("user_name")
-                        .remove("user_email")
-                        .remove("user_id")
-                        .apply()
+                    clearAuthSession(context)
                     ApiClient.clear()
 
                     val intent = Intent(context, LoginActivity::class.java).apply {
@@ -444,6 +441,7 @@ fun PlaylistCard(item: PlaylistItem, modifier: Modifier = Modifier, onClick: () 
         color = Color.Transparent
     ) {
         val gradient = Brush.verticalGradient(listOf(item.color, lerp(item.color, Color.Black, 0.12f)))
+        val textColor = if (item.color.luminance() > 0.62f) Color(0xFF1C1C1C) else Color.White
         Box(modifier = Modifier
             .fillMaxSize()
             .background(gradient)
@@ -460,7 +458,7 @@ fun PlaylistCard(item: PlaylistItem, modifier: Modifier = Modifier, onClick: () 
             Box(modifier = Modifier
                 .align(Alignment.BottomStart)
                 .padding(8.dp)) {
-                Text(text = item.title, color = Color.White, fontWeight = FontWeight.SemiBold)
+                Text(text = item.title, color = textColor, fontWeight = FontWeight.SemiBold)
             }
         }
     }

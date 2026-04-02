@@ -19,6 +19,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -59,6 +60,8 @@ fun PlaylistCard(
         val cardGradient = Brush.horizontalGradient(
             listOf(color, lerp(color, Color.Black, 0.18f))
         )
+        val foregroundColor = readableTextColorForCard(color)
+        val secondaryForeground = foregroundColor.copy(alpha = 0.92f)
 
         Box(
             modifier = Modifier
@@ -91,23 +94,23 @@ fun PlaylistCard(
                         text = title,
                         fontWeight = FontWeight.Bold,
                         fontSize = 18.sp,
-                        color = Color.White,
+                        color = foregroundColor,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
                     Spacer(modifier = Modifier.height(6.dp))
-                    Text(text = subtitle, fontSize = 13.sp, color = Color.White.copy(alpha = 0.95f))
+                    Text(text = subtitle, fontSize = 13.sp, color = secondaryForeground)
                 }
 
                 IconButton(onClick = onFavoriteToggle) {
                     Icon(
                         imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
                         contentDescription = if (isFavorite) "Desfavoritar" else "Favoritar",
-                        tint = if (isFavorite) Color(0xFFFFC0C0) else Color.White.copy(alpha = 0.9f)
+                        tint = if (isFavorite) Color(0xFFFF6B6B) else secondaryForeground
                     )
                 }
                 IconButton(onClick = { showMenu = true }) {
-                    Icon(imageVector = Icons.Filled.MoreVert, contentDescription = "Mais", tint = Color.White.copy(alpha = 0.9f))
+                    Icon(imageVector = Icons.Filled.MoreVert, contentDescription = "Mais", tint = secondaryForeground)
                 }
                 DropdownMenu(
                     expanded = showMenu,
@@ -244,4 +247,8 @@ fun PlaylistCard(
             }
         }
     }
+}
+
+private fun readableTextColorForCard(background: Color): Color {
+    return if (background.luminance() > 0.62f) Color(0xFF1C1C1C) else Color.White
 }

@@ -3,10 +3,8 @@ package com.vvai.calmwave.util
 import android.content.Context
 import java.io.File
 
-private const val AUTH_PREFS = "calmwave_auth"
-
 fun getUserScopeId(context: Context): String {
-    val prefs = context.getSharedPreferences(AUTH_PREFS, Context.MODE_PRIVATE)
+    val prefs = getSecureAuthPrefs(context)
 
     if (prefs.contains("user_id")) {
         val id = prefs.getLong("user_id", -1L)

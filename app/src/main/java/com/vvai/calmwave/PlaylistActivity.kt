@@ -3,7 +3,6 @@ package com.vvai.calmwave
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
-import android.media.MediaMetadataRetriever
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -29,18 +28,23 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.border
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.tooling.preview.Preview
 import com.vvai.calmwave.components.BottomNavigationBar
 import com.vvai.calmwave.components.TopBar
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.vvai.calmwave.ui.components.PlaylistComponents.PlaylistCard
 import com.vvai.calmwave.ui.components.PlaylistComponents.ColorWheelPicker
 import com.vvai.calmwave.ui.components.PlaylistComponents.PlaylistTabs
@@ -48,11 +52,17 @@ import com.vvai.calmwave.ui.components.PlaylistComponents.PlaylistSelectionDialo
 import com.vvai.calmwave.ui.components.PlaylistComponents.FilterSheet
 import java.io.File
 import com.vvai.calmwave.R
+import com.vvai.calmwave.data.repository.AnalyticsRepository
 import com.vvai.calmwave.data.remote.ApiClient
+import com.vvai.calmwave.util.AudioMetadataCache
+import com.vvai.calmwave.util.clearAuthSession
 import com.vvai.calmwave.util.enterImmersiveMode
+import com.vvai.calmwave.util.getPlaybackUiPollingMs
 import com.vvai.calmwave.util.getUserAudioDir
 import com.vvai.calmwave.util.getUserScopedKey
+import com.vvai.calmwave.util.NetworkMonitor
 import com.vvai.calmwave.ui.theme.CalmWaveTheme
+import kotlinx.coroutines.launch
 
 private const val PREFS_PLAYLISTS = "playlists"
 private const val PREFS_AUDIO_TO_PLAYLIST_MAP = "audioToPlaylistMap"
@@ -97,6 +107,9 @@ class PlaylistActivity : ComponentActivity() {
         setContent {
             CalmWaveTheme {
                 val context = LocalContext.current
+                val lifecycleOwner = LocalLifecycleOwner.current
+                val analyticsRepository = remember { AnalyticsRepository(context) }
+                val networkMonitor = remember { NetworkMonitor.getInstance(context) }
                 // --- State ---
             var showModal by remember { mutableStateOf(false) }
             var selectedAudioFile by remember { mutableStateOf<File?>(null) }
@@ -115,8 +128,10 @@ class PlaylistActivity : ComponentActivity() {
             var showPlaylistDialogForAudio by remember { mutableStateOf<File?>(null) }
             var playlistFilter by remember { mutableStateOf<String?>(null) }
             val activeColor = Color(0xFF2DC9C6)
-            val audioDurationCache = remember { mutableStateMapOf<String, Long>() }
+            val playbackUiPollingMs = remember { getPlaybackUiPollingMs(context) }
             var consumedInitialNavigation by remember { mutableStateOf(false) }
+            var pendingSyncPaths by remember { mutableStateOf(setOf<String>()) }
+            var isOnline by remember { mutableStateOf(networkMonitor.isCurrentlyOnline()) }
             
             // Global state for DropdownMenu control - using file path as key
             var menuOpenedForFilePath by remember { mutableStateOf<String?>(null) }
@@ -186,6 +201,30 @@ class PlaylistActivity : ComponentActivity() {
             }
             LaunchedEffect(Unit) { loadPlaylists() }
             LaunchedEffect(playlists.toList(), audioToPlaylistMap.toMap(), audioDisplayNames.toMap()) { savePlaylists() }
+            suspend fun refreshPendingSyncState() {
+                pendingSyncPaths = analyticsRepository.getPendingAudioFilePaths()
+                isOnline = networkMonitor.isCurrentlyOnline()
+            }
+            LaunchedEffect(Unit) { refreshPendingSyncState() }
+            LaunchedEffect(Unit) {
+                while (true) {
+                    refreshPendingSyncState()
+                    kotlinx.coroutines.delay(2500)
+                }
+            }
+            DisposableEffect(lifecycleOwner) {
+                val observer = LifecycleEventObserver { _, event ->
+                    if (event == Lifecycle.Event.ON_RESUME) {
+                        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+                            refreshPendingSyncState()
+                        }
+                    }
+                }
+                lifecycleOwner.lifecycle.addObserver(observer)
+                onDispose {
+                    lifecycleOwner.lifecycle.removeObserver(observer)
+                }
+            }
             LaunchedEffect(playlists.toList(), consumedInitialNavigation) {
                 if (!consumedInitialNavigation && !openPlaylistTitle.isNullOrBlank()) {
                     if (playlists.any { it.title == openPlaylistTitle }) {
@@ -206,6 +245,7 @@ class PlaylistActivity : ComponentActivity() {
                     ?: emptyList()
                 wavFiles.clear()
                 wavFiles.addAll(files)
+                AudioMetadataCache.invalidateMissing(files.map { it.absolutePath }.toSet())
 
                 // Limpa nomes personalizados de arquivos que não existem mais
                 val currentPaths = wavFiles.map { it.absolutePath }.toSet()
@@ -239,13 +279,7 @@ class PlaylistActivity : ComponentActivity() {
                                 title = "Playlists",
                                 modifier = Modifier.fillMaxWidth(),
                                 onLogoutClick = {
-                                    val authPrefs = context.getSharedPreferences("calmwave_auth", Context.MODE_PRIVATE)
-                                    authPrefs.edit()
-                                        .remove("access_token")
-                                        .remove("user_name")
-                                        .remove("user_email")
-                                        .remove("user_id")
-                                        .apply()
+                                    clearAuthSession(context)
                                     ApiClient.clear()
 
                                     val intent = Intent(context, LoginActivity::class.java).apply {
@@ -255,6 +289,22 @@ class PlaylistActivity : ComponentActivity() {
                                     (context as? Activity)?.finish()
                                 }
                             )
+                            val isSyncing = pendingSyncPaths.isNotEmpty()
+                            Surface(
+                                color = if (isSyncing) Color(0xFFFFF3E0) else Color(0xFFE8F5E9),
+                                shape = RoundedCornerShape(999.dp),
+                                modifier = Modifier
+                                    .padding(top = 10.dp)
+                                    .align(Alignment.End)
+                                    .padding(end = 16.dp)
+                            ) {
+                                Text(
+                                    text = if (isSyncing) "Sincronizando" else "Sincronizado",
+                                    color = if (isSyncing) Color(0xFF8A3B00) else Color(0xFF1B5E20),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                )
+                            }
                             Spacer(modifier = Modifier.height(20.dp))
                             // Tabs and Search
                             Row(
@@ -323,7 +373,7 @@ class PlaylistActivity : ComponentActivity() {
                                     playlists = playlists,
                                     audioToPlaylistMap = audioToPlaylistMap,
                                     audioDisplayNames = audioDisplayNames,
-                                    audioDurationCache = audioDurationCache,
+                                    pendingSyncPaths = pendingSyncPaths,
                                     menuOpenedForFilePath = menuOpenedForFilePath,
                                     onMenuOpenedChange = { menuOpenedForFilePath = it },
                                     onAudioSelected = { file, queue ->
@@ -342,19 +392,6 @@ class PlaylistActivity : ComponentActivity() {
                                             audioDisplayNames[file.absolutePath] = trimmed
                                         }
                                         savePlaylists()
-                                    },
-                                    resolveAudioDuration = { filePath ->
-                                        val retriever = MediaMetadataRetriever()
-                                        try {
-                                            retriever.setDataSource(filePath)
-                                            val duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
-                                                ?.toLongOrNull() ?: -1L
-                                            if (duration > 0 && duration < 1000 * 60 * 60 * 10) duration else -1L
-                                        } catch (_: Exception) {
-                                            -1L
-                                        } finally {
-                                            try { retriever.release() } catch (_: Exception) { }
-                                        }
                                     },
                                     formatDuration = { durationMs -> formatMillis(durationMs) }
                                 )
@@ -430,7 +467,7 @@ class PlaylistActivity : ComponentActivity() {
                                                             }
                                                         }
                                                 }
-                                                kotlinx.coroutines.delay(33)
+                                                kotlinx.coroutines.delay(playbackUiPollingMs)
                                             }
                                         }
                                         val sliderPosition by animateFloatAsState(
@@ -807,13 +844,12 @@ private fun ColumnScope.AudioTabContent(
     playlists: List<PlaylistEntry>,
     audioToPlaylistMap: MutableMap<String, String>,
     audioDisplayNames: MutableMap<String, String>,
-    audioDurationCache: MutableMap<String, Long>,
+    pendingSyncPaths: Set<String>,
     menuOpenedForFilePath: String?,
     onMenuOpenedChange: (String?) -> Unit,
     onAudioSelected: (File, List<File>) -> Unit,
     onMoveToPlaylist: (File) -> Unit,
     onRenameAudio: (File, String) -> Unit,
-    resolveAudioDuration: (String) -> Long,
     formatDuration: (Long) -> String
 ) {
     var renameTarget by remember { mutableStateOf<File?>(null) }
@@ -889,14 +925,13 @@ private fun ColumnScope.AudioTabContent(
                 key = { it.absolutePath }
             ) { file: File ->
             val isMenuOpen = menuOpenedForFilePath == file.absolutePath
-            val durationMs = audioDurationCache.getOrPut(file.absolutePath) {
-                resolveAudioDuration(file.absolutePath)
-            }
+            val durationMs = AudioMetadataCache.getDurationMs(file)
             val playlistName = audioToPlaylistMap[file.absolutePath]
             val playlistObj = playlists.find { it.title == playlistName }
             val playlistColor = playlistObj?.color ?: Color(0xFF8EEAE7)
-            val textColor = if (playlistObj != null) Color.White else Color.Black
+            val textColor = readableTextColorForBackground(playlistColor)
             val displayName = audioDisplayNames[file.absolutePath]?.takeIf { it.isNotBlank() } ?: file.name
+            val isPendingSync = pendingSyncPaths.contains(file.absolutePath)
 
             Row(
                 modifier = Modifier
@@ -923,6 +958,13 @@ private fun ColumnScope.AudioTabContent(
                         fontWeight = FontWeight.Medium,
                         color = textColor
                     )
+                    if (isPendingSync) {
+                        Text(
+                            text = "Pendente de sincronização",
+                            color = textColor.copy(alpha = 0.9f),
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.width(8.dp))
@@ -938,7 +980,8 @@ private fun ColumnScope.AudioTabContent(
                 }) {
                     Icon(
                         imageVector = Icons.Filled.MoreVert,
-                        contentDescription = "Opções"
+                        contentDescription = "Opções",
+                        tint = textColor
                     )
                 }
 
@@ -1014,6 +1057,10 @@ private fun ColumnScope.AudioTabContent(
             }
         )
     }
+}
+
+private fun readableTextColorForBackground(background: Color): Color {
+    return if (background.luminance() > 0.62f) Color(0xFF1C1C1C) else Color.White
 }
 
 @Composable

@@ -7,6 +7,8 @@ import androidx.lifecycle.viewModelScope
 import android.util.Log
 import com.vvai.calmwave.data.model.AudioProcessingMetrics
 import com.vvai.calmwave.data.repository.AnalyticsRepository
+import com.vvai.calmwave.util.FunnelAnalyticsTracker
+import com.vvai.calmwave.util.getPlaybackMonitorPollingMs
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
@@ -260,6 +262,12 @@ class MainViewModel(
                         durationMs = recordingDurationMs,
                         fileSizeBytes = originalFile?.length() ?: 0L
                     )
+                    FunnelAnalyticsTracker.trackFirstRecordingCompleted(
+                        context = context,
+                        repository = analyticsRepository,
+                        recordingDurationMs = recordingDurationMs,
+                        processed = true
+                    )
                     
                     // Tenta fazer upload do áudio (se online)
                     if (processedFile.exists() && processedFile.length() > 44) {
@@ -460,6 +468,7 @@ class MainViewModel(
     }
 
     private fun startPlaybackMonitor() {
+        val pollingMs = getPlaybackMonitorPollingMs(context)
         viewModelScope.launch {
             while (true) {
                 try {
@@ -497,7 +506,7 @@ class MainViewModel(
                         }
                     }
 
-                    delay(500) // Atualiza a cada 500ms para melhor responsividade
+                    delay(pollingMs)
                 } catch (e: Exception) {
                     Log.e("MainViewModel", "Erro no monitor de reprodução", e)
                     e.printStackTrace()

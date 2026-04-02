@@ -87,6 +87,8 @@ dependencies {
     
     // DataStore para SharedPreferences modernos
     implementation("androidx.datastore:datastore-preferences:1.0.0")
+    // SharedPreferences criptografadas para dados sensíveis
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
     
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

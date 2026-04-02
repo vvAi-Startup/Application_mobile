@@ -6,6 +6,8 @@ import android.util.Log
 import com.vvai.calmwave.data.model.LoginRequest
 import com.vvai.calmwave.data.model.RegisterRequest
 import com.vvai.calmwave.data.remote.ApiClient
+import com.vvai.calmwave.util.clearAuthSession
+import com.vvai.calmwave.util.getSecureAuthPrefs
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.UUID
@@ -22,13 +24,12 @@ object GuestSessionManager {
 
     private const val TAG = "GuestSessionManager"
 
-    private const val PREFS_NAME = "calmwave_auth"
     private const val KEY_GUEST_EMAIL = "guest_email"
     private const val KEY_GUEST_PASSWORD = "guest_password"
     private const val KEY_ACCESS_TOKEN = "access_token"
 
     suspend fun ensureGuestSession(context: Context): String? = withContext(Dispatchers.IO) {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val prefs = getSecureAuthPrefs(context)
 
         val existingToken = prefs.getString(KEY_ACCESS_TOKEN, null)
         if (!existingToken.isNullOrBlank()) {
@@ -87,12 +88,13 @@ object GuestSessionManager {
     }
 
     fun clear(context: Context) {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val prefs = getSecureAuthPrefs(context)
         prefs.edit()
             .remove(KEY_ACCESS_TOKEN)
             .remove(KEY_GUEST_EMAIL)
             .remove(KEY_GUEST_PASSWORD)
             .apply()
+        clearAuthSession(context)
         ApiClient.clear()
     }
 
@@ -101,7 +103,7 @@ object GuestSessionManager {
     }
 
     private fun getOrCreateGuestCredentials(context: Context): Pair<String, String> {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val prefs = getSecureAuthPrefs(context)
 
         val existingEmail = prefs.getString(KEY_GUEST_EMAIL, null)
         val existingPassword = prefs.getString(KEY_GUEST_PASSWORD, null)

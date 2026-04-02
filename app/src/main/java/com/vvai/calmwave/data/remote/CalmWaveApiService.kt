@@ -50,32 +50,67 @@ interface CalmWaveApiService {
     // ========== Áudios ==========
     
     /**
-     * Sincroniza metadados do áudio (JSON).
-     * Observação: o backend em produção pode estar exigindo multipart em /audios/sync;
-     * para isso use syncAudioMultipart.
-     */
-    @POST("api/audios/sync")
-    suspend fun syncAudioMetadataJson(
-        @Body data: AudioSyncRequest
-    ): Response<Map<String, Any>>
-
-    @POST("audios/sync")
-    suspend fun syncAudioMetadataJsonNoApiPrefix(
-        @Body data: AudioSyncRequest
-    ): Response<Map<String, Any>>
-
-    /**
-     * Sincronização via multipart (compatível com handler que exige o arquivo em `file`).
+     * Sincronização via multipart (nova rota singular /audio/sync).
+     * Envia o arquivo de áudio processado + metadados.
      */
     @Multipart
-    @POST("api/audios/sync")
-    suspend fun syncAudioMultipart(
+    @POST("api/audio/sync")
+    suspend fun syncProcessedAudioMultipart(
         @Part file: MultipartBody.Part,
-        @Part("device_origin") deviceOrigin: RequestBody? = null,
+        @Part("filename") filename: RequestBody? = null,
         @Part("duration_seconds") durationSeconds: RequestBody? = null,
+        @Part("size_bytes") sizeBytes: RequestBody? = null,
+        @Part("recorded_at") recordedAt: RequestBody? = null,
+        @Part("processed") processed: RequestBody? = null,
         @Part("processing_time_ms") processingTimeMs: RequestBody? = null,
-        @Part("transcription_text") transcriptionText: RequestBody? = null,
-        @Part processedFile: MultipartBody.Part? = null
+        @Part("device_origin") deviceOrigin: RequestBody? = null,
+        @Part("transcribed") transcribed: RequestBody? = null,
+        @Part("transcription_text") transcriptionText: RequestBody? = null
+    ): Response<Map<String, Any>>
+
+    @Multipart
+    @POST("audio/sync")
+    suspend fun syncProcessedAudioMultipartNoApiPrefix(
+        @Part file: MultipartBody.Part,
+        @Part("filename") filename: RequestBody? = null,
+        @Part("duration_seconds") durationSeconds: RequestBody? = null,
+        @Part("size_bytes") sizeBytes: RequestBody? = null,
+        @Part("recorded_at") recordedAt: RequestBody? = null,
+        @Part("processed") processed: RequestBody? = null,
+        @Part("processing_time_ms") processingTimeMs: RequestBody? = null,
+        @Part("device_origin") deviceOrigin: RequestBody? = null,
+        @Part("transcribed") transcribed: RequestBody? = null,
+        @Part("transcription_text") transcriptionText: RequestBody? = null
+    ): Response<Map<String, Any>>
+
+    @Multipart
+    @POST("api/audios/sync")
+    suspend fun syncProcessedAudioMultipartPlural(
+        @Part file: MultipartBody.Part,
+        @Part("filename") filename: RequestBody? = null,
+        @Part("duration_seconds") durationSeconds: RequestBody? = null,
+        @Part("size_bytes") sizeBytes: RequestBody? = null,
+        @Part("recorded_at") recordedAt: RequestBody? = null,
+        @Part("processed") processed: RequestBody? = null,
+        @Part("processing_time_ms") processingTimeMs: RequestBody? = null,
+        @Part("device_origin") deviceOrigin: RequestBody? = null,
+        @Part("transcribed") transcribed: RequestBody? = null,
+        @Part("transcription_text") transcriptionText: RequestBody? = null
+    ): Response<Map<String, Any>>
+
+    @Multipart
+    @POST("audios/sync")
+    suspend fun syncProcessedAudioMultipartPluralNoApiPrefix(
+        @Part file: MultipartBody.Part,
+        @Part("filename") filename: RequestBody? = null,
+        @Part("duration_seconds") durationSeconds: RequestBody? = null,
+        @Part("size_bytes") sizeBytes: RequestBody? = null,
+        @Part("recorded_at") recordedAt: RequestBody? = null,
+        @Part("processed") processed: RequestBody? = null,
+        @Part("processing_time_ms") processingTimeMs: RequestBody? = null,
+        @Part("device_origin") deviceOrigin: RequestBody? = null,
+        @Part("transcribed") transcribed: RequestBody? = null,
+        @Part("transcription_text") transcriptionText: RequestBody? = null
     ): Response<Map<String, Any>>
     
     /**

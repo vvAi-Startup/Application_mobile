@@ -49,6 +49,7 @@ import androidx.lifecycle.lifecycleScope
 import com.vvai.calmwave.data.model.LoginRequest
 import com.vvai.calmwave.data.remote.ApiClient
 import com.vvai.calmwave.util.enterImmersiveMode
+import com.vvai.calmwave.util.saveAuthSession
 import com.vvai.calmwave.ui.theme.CalmWaveTheme
 import com.vvai.calmwave.ui.theme.FredokaFamily
 import kotlinx.coroutines.launch
@@ -96,13 +97,16 @@ class LoginActivity : ComponentActivity() {
                     val body = response.body()
                     val token = body?.token
                     if (!token.isNullOrBlank()) {
-                        val prefs = getSharedPreferences("calmwave_auth", MODE_PRIVATE)
-                        prefs.edit()
-                            .putString("access_token", token)
-                            .putString("user_name", body?.user?.name)
-                            .putString("user_email", body?.user?.email ?: email.trim())
-                            .putLong("user_id", body?.user?.id ?: -1L)
-                            .apply()
+                        saveAuthSession(
+                            context = this@LoginActivity,
+                            accessToken = token,
+                            userName = body?.user?.name,
+                            userEmail = body?.user?.email ?: email.trim(),
+                            userId = body?.user?.id,
+                            refreshToken = body?.refreshToken,
+                            expiresInSeconds = body?.expiresInSeconds,
+                            expiresAtEpochMs = body?.expiresAt
+                        )
                         ApiClient.setAuthToken(token)
 
                         val intent = Intent(this@LoginActivity, PrincipalActivity::class.java).apply {

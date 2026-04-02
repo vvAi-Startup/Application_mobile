@@ -1,5 +1,6 @@
 package com.vvai.calmwave
 
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -7,41 +8,17 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.SkipNext
-import androidx.compose.material.icons.filled.SkipPrevious
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
+import android.os.Looper
+import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.ui.PlayerNotificationManager
-import com.vvai.calmwave.ui.theme.CalmWaveTheme
 
 object PlaybackPlayerHolder {
     @Volatile
@@ -77,14 +54,33 @@ object PlaybackPlayerHolder {
 
 class PlaybackForegroundService : Service() {
 
-    private var notificationManager: PlayerNotificationManager? = null
     private val player: ExoPlayer by lazy { PlaybackPlayerHolder.getPlayer(this) }
     private var startedInForeground = false
+    private val handler = Handler(Looper.getMainLooper())
+    private val progressUpdater = object : Runnable {
+        override fun run() {
+            if (player.mediaItemCount > 0) {
+                updateNotification()
+                handler.postDelayed(this, 1000)
+            }
+        }
+    }
+
     private val playerListener = object : Player.Listener {
+        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            updateNotification()
+        }
+
+        override fun onIsPlayingChanged(isPlaying: Boolean) {
+            updateNotification()
+        }
+
         override fun onPlaybackStateChanged(playbackState: Int) {
-            if (startedInForeground && playbackState == Player.STATE_IDLE && !player.playWhenReady) {
+            if (startedInForeground && playbackState == Player.STATE_IDLE && player.mediaItemCount == 0) {
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
+            } else {
+                updateNotification()
             }
         }
     }
@@ -92,97 +88,150 @@ class PlaybackForegroundService : Service() {
     override fun onCreate() {
         super.onCreate()
         createChannelIfNeeded()
-        setupNotificationManager()
         player.addListener(playerListener)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
+            ACTION_PREVIOUS -> player.seekToPreviousMediaItem()
+            ACTION_NEXT -> player.seekToNextMediaItem()
+            ACTION_PLAY_PAUSE -> {
+                if (player.isPlaying) {
+                    player.pause()
+                } else {
+                    player.play()
+                }
+            }
             ACTION_STOP -> {
                 player.pause()
                 player.stop()
+                player.clearMediaItems()
+                handler.removeCallbacks(progressUpdater)
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
                 return START_NOT_STICKY
             }
-            ACTION_START, null -> {
-                notificationManager?.setPlayer(player)
-            }
         }
+        updateNotification()
         return START_STICKY
     }
 
     override fun onDestroy() {
         player.removeListener(playerListener)
-        notificationManager?.setPlayer(null)
-        notificationManager = null
+        handler.removeCallbacks(progressUpdater)
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    private fun setupNotificationManager() {
+    private fun buildNotification(): Notification {
         val openAppIntent = Intent(this, PlaylistActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         }
-        val pendingIntent = PendingIntent.getActivity(
+        val contentPendingIntent = PendingIntent.getActivity(
             this,
             201,
             openAppIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        notificationManager = PlayerNotificationManager.Builder(
+        val previousIntent = PendingIntent.getService(
             this,
-            NOTIFICATION_ID,
-            CHANNEL_ID
+            211,
+            Intent(this, PlaybackForegroundService::class.java).setAction(ACTION_PREVIOUS),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-            .setMediaDescriptionAdapter(object : PlayerNotificationManager.MediaDescriptionAdapter {
-                override fun getCurrentContentTitle(player: Player): CharSequence {
-                    val item = player.currentMediaItem
-                    val path = item?.localConfiguration?.uri?.path ?: item?.localConfiguration?.uri?.toString().orEmpty()
-                    return path.substringAfterLast('/').ifBlank { "CalmWave" }
+        val playPauseIntent = PendingIntent.getService(
+            this,
+            212,
+            Intent(this, PlaybackForegroundService::class.java).setAction(ACTION_PLAY_PAUSE),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val nextIntent = PendingIntent.getService(
+            this,
+            213,
+            Intent(this, PlaybackForegroundService::class.java).setAction(ACTION_NEXT),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val stopIntent = PendingIntent.getService(
+            this,
+            214,
+            Intent(this, PlaybackForegroundService::class.java).setAction(ACTION_STOP),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val path = PlaybackPlayerHolder.currentMediaPath().orEmpty()
+        val title = path.substringAfterLast('/').ifBlank { "CalmWave" }
+        val durationMs = player.duration.takeIf { it > 0 } ?: 0L
+        val positionMs = player.currentPosition.coerceAtLeast(0L)
+        val progressMax = durationMs.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+        val progressValue = positionMs.coerceAtMost(durationMs).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle(title)
+            .setContentText(
+                if (durationMs > 0) {
+                    "${formatTime(positionMs)} / ${formatTime(durationMs)}"
+                } else {
+                    "Reprodução em segundo plano"
                 }
-
-                override fun createCurrentContentIntent(player: Player): PendingIntent = pendingIntent
-
-                override fun getCurrentContentText(player: Player): CharSequence = "Reprodução em segundo plano"
-
-                override fun getCurrentLargeIcon(
-                    player: Player,
-                    callback: PlayerNotificationManager.BitmapCallback
-                ) = null
-            })
-            .setNotificationListener(object : PlayerNotificationManager.NotificationListener {
-                override fun onNotificationPosted(notificationId: Int, notification: Notification, ongoing: Boolean) {
-                    if (ongoing) {
-                        startedInForeground = true
-                        startForeground(notificationId, notification)
-                    } else {
-                        stopForeground(STOP_FOREGROUND_DETACH)
-                    }
-                }
-
-                override fun onNotificationCancelled(notificationId: Int, dismissedByUser: Boolean) {
-                    stopForeground(STOP_FOREGROUND_REMOVE)
-                    if (dismissedByUser) {
-                        player.pause()
-                    }
-                    stopSelf()
-                }
-            })
+            )
+            .setContentIntent(contentPendingIntent)
+            .setOnlyAlertOnce(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setSilent(true)
+            .setOngoing(player.isPlaying)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setProgress(progressMax, progressValue, durationMs <= 0)
+            .addAction(android.R.drawable.ic_media_previous, "Anterior", previousIntent)
+            .addAction(
+                if (player.isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play,
+                if (player.isPlaying) "Pausar" else "Tocar",
+                playPauseIntent
+            )
+            .addAction(android.R.drawable.ic_media_next, "Próximo", nextIntent)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Parar", stopIntent)
             .build()
-            .apply {
-                setUseNextAction(true)
-                setUsePreviousAction(true)
-                setUsePlayPauseActions(true)
-                setUseFastForwardAction(false)
-                setUseRewindAction(false)
-                setUseStopAction(true)
-                setPriority(NotificationManagerCompat.IMPORTANCE_LOW)
-                setSmallIcon(R.mipmap.ic_launcher)
-                setPlayer(player)
+    }
+
+    private fun updateNotification() {
+        if (player.mediaItemCount == 0) {
+            handler.removeCallbacks(progressUpdater)
+            if (startedInForeground) {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                startedInForeground = false
             }
+            return
+        }
+
+        val notification = buildNotification()
+        if (!startedInForeground) {
+            startForeground(NOTIFICATION_ID, notification)
+            startedInForeground = true
+        } else if (canPostNotifications()) {
+            NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, notification)
+        }
+
+        handler.removeCallbacks(progressUpdater)
+        if (player.isPlaying) {
+            handler.post(progressUpdater)
+        }
+    }
+
+    private fun formatTime(ms: Long): String {
+        val totalSeconds = (ms / 1000).coerceAtLeast(0)
+        val minutes = totalSeconds / 60
+        val seconds = totalSeconds % 60
+        return String.format("%02d:%02d", minutes, seconds)
+    }
+
+    private fun canPostNotifications(): Boolean {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
     }
 
     private fun createChannelIfNeeded() {
@@ -204,6 +253,9 @@ class PlaybackForegroundService : Service() {
         private const val NOTIFICATION_ID = 2101
         private const val ACTION_START = "com.vvai.calmwave.action.PLAYBACK_START"
         private const val ACTION_STOP = "com.vvai.calmwave.action.PLAYBACK_STOP"
+        private const val ACTION_PLAY_PAUSE = "com.vvai.calmwave.action.PLAYBACK_PLAY_PAUSE"
+        private const val ACTION_PREVIOUS = "com.vvai.calmwave.action.PLAYBACK_PREVIOUS"
+        private const val ACTION_NEXT = "com.vvai.calmwave.action.PLAYBACK_NEXT"
 
         fun start(context: Context) {
             val intent = Intent(context, PlaybackForegroundService::class.java).apply {
@@ -217,72 +269,6 @@ class PlaybackForegroundService : Service() {
                 action = ACTION_STOP
             }
             context.startService(intent)
-        }
-    }
-}
-
-@Composable
-private fun PlaybackForegroundServiceNotificationPreview() {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E)),
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp)
-    ) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            Text(
-                text = "denoised_1711357782.wav",
-                color = Color.White,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = "Reprodução em segundo plano",
-                color = Color.White.copy(alpha = 0.75f),
-                style = MaterialTheme.typography.bodySmall
-            )
-            Spacer(modifier = Modifier.height(10.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = {}) {
-                    Icon(
-                        imageVector = Icons.Filled.SkipPrevious,
-                        contentDescription = "Anterior",
-                        tint = Color.White,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-                IconButton(onClick = {}) {
-                    Icon(
-                        imageVector = Icons.Filled.Pause,
-                        contentDescription = "Pausar",
-                        tint = Color.White,
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-                IconButton(onClick = {}) {
-                    Icon(
-                        imageVector = Icons.Filled.SkipNext,
-                        contentDescription = "Próximo",
-                        tint = Color.White,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Preview(name = "Playback Notification", showBackground = true, widthDp = 393)
-@Composable
-private fun PlaybackForegroundServicePreview() {
-    CalmWaveTheme {
-        Surface(color = Color(0xFFECEFF1)) {
-            PlaybackForegroundServiceNotificationPreview()
         }
     }
 }
