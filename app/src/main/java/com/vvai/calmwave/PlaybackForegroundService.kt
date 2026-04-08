@@ -1,6 +1,7 @@
 package com.vvai.calmwave
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -13,12 +14,14 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.widget.RemoteViews
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import com.vvai.calmwave.util.resolveAudioDisplayName
 
 object PlaybackPlayerHolder {
     @Volatile
@@ -61,7 +64,7 @@ class PlaybackForegroundService : Service() {
         override fun run() {
             if (player.mediaItemCount > 0) {
                 updateNotification()
-                handler.postDelayed(this, 1000)
+                handler.postDelayed(this, 250)
             }
         }
     }
@@ -161,40 +164,65 @@ class PlaybackForegroundService : Service() {
         )
 
         val path = PlaybackPlayerHolder.currentMediaPath().orEmpty()
-        val title = path.substringAfterLast('/').ifBlank { "CalmWave" }
+        val title = resolveAudioDisplayName(this, path)
         val durationMs = player.duration.takeIf { it > 0 } ?: 0L
         val positionMs = player.currentPosition.coerceAtLeast(0L)
         val progressMax = durationMs.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
         val progressValue = positionMs.coerceAtMost(durationMs).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+        val subtitle = if (durationMs > 0) {
+            "${formatTime(positionMs)} / ${formatTime(durationMs)}"
+        } else {
+            "Reprodução em segundo plano"
+        }
+
+        val compactView = RemoteViews(packageName, R.layout.notification_playback_compact).apply {
+            setTextViewText(R.id.notif_title, title)
+            setTextViewText(R.id.notif_subtitle, subtitle)
+            setProgressBar(R.id.notif_progress, progressMax, progressValue, durationMs <= 0)
+            setImageViewResource(
+                R.id.notif_btn_play_pause,
+                if (player.isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
+            )
+
+            setOnClickPendingIntent(R.id.notif_btn_previous, previousIntent)
+            setOnClickPendingIntent(R.id.notif_btn_play_pause, playPauseIntent)
+            setOnClickPendingIntent(R.id.notif_btn_next, nextIntent)
+            setOnClickPendingIntent(R.id.notif_btn_stop, stopIntent)
+        }
+
+        val expandedView = RemoteViews(packageName, R.layout.notification_playback_expanded).apply {
+            setTextViewText(R.id.notif_title, title)
+            setTextViewText(R.id.notif_subtitle, subtitle)
+            setProgressBar(R.id.notif_progress, progressMax, progressValue, durationMs <= 0)
+            setImageViewResource(
+                R.id.notif_btn_play_pause,
+                if (player.isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
+            )
+
+            setOnClickPendingIntent(R.id.notif_btn_previous, previousIntent)
+            setOnClickPendingIntent(R.id.notif_btn_play_pause, playPauseIntent)
+            setOnClickPendingIntent(R.id.notif_btn_next, nextIntent)
+            setOnClickPendingIntent(R.id.notif_btn_stop, stopIntent)
+        }
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(title)
-            .setContentText(
-                if (durationMs > 0) {
-                    "${formatTime(positionMs)} / ${formatTime(durationMs)}"
-                } else {
-                    "Reprodução em segundo plano"
-                }
-            )
+            .setContentText(subtitle)
             .setContentIntent(contentPendingIntent)
             .setOnlyAlertOnce(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setSilent(true)
             .setOngoing(player.isPlaying)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setProgress(progressMax, progressValue, durationMs <= 0)
-            .addAction(android.R.drawable.ic_media_previous, "Anterior", previousIntent)
-            .addAction(
-                if (player.isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play,
-                if (player.isPlaying) "Pausar" else "Tocar",
-                playPauseIntent
-            )
-            .addAction(android.R.drawable.ic_media_next, "Próximo", nextIntent)
-            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Parar", stopIntent)
+            .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
+            .setStyle(NotificationCompat.DecoratedCustomViewStyle())
+            .setCustomContentView(compactView)
+            .setCustomBigContentView(expandedView)
             .build()
     }
 
+    @SuppressLint("MissingPermission")
     private fun updateNotification() {
         if (player.mediaItemCount == 0) {
             handler.removeCallbacks(progressUpdater)

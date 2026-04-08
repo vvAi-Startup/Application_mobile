@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
+import com.vvai.calmwave.ui.components.WaveProgressBar
 
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -37,12 +38,15 @@ fun AudioControllerModal(
                     color = Color.White
                 )
                 Spacer(modifier = Modifier.height(16.dp))
-                LinearProgressIndicator(
+                WaveProgressBar(
                     progress = 0.5f,
-                    color = Color.White.copy(alpha = 0.85f),
+                    barColor = Color.White.copy(alpha = 0.85f),
+                    trackColor = Color.White.copy(alpha = 0.28f),
+                    waveColor = Color.White.copy(alpha = 0.55f),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(8.dp)
+                        .height(10.dp),
+                    animationDurationMs = 1700
                 )
                 Spacer(modifier = Modifier.height(24.dp))
                 Row(

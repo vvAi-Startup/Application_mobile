@@ -8,7 +8,9 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -23,6 +25,8 @@ import com.vvai.calmwave.R
 import com.vvai.calmwave.ui.theme.titleTitle
 import android.content.Intent
 import com.vvai.calmwave.MainActivity
+import com.vvai.calmwave.util.NetworkMonitor
+import com.vvai.calmwave.util.SyncStatusTracker
 import com.vvai.calmwave.util.getSecureAuthPrefs
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -51,6 +55,15 @@ fun TopBar(
             ?: authPrefs.getString("user_email", null)
     }
     val displayUserName = if (!userName.isNullOrBlank()) userName else persistedUserName
+    val networkMonitor = remember { NetworkMonitor.getInstance(context) }
+    val isOnline by networkMonitor.isOnline.collectAsState(initial = networkMonitor.isCurrentlyOnline())
+    val isSyncing by SyncStatusTracker.isSyncing.collectAsState()
+
+    val (connectionStatusText, connectionStatusColor) = when {
+        !isOnline -> "Offline" to Color(0xFFD32F2F)
+        isSyncing -> "Sincronizando" to Color(0xFFF9A825)
+        else -> "Online" to Color(0xFF2E7D32)
+    }
     
     // Configura a cor da status bar
     val systemUiController = rememberSystemUiController()
@@ -75,6 +88,13 @@ fun TopBar(
             .padding(vertical = 12.dp)
             .height(64.dp)
     ) {
+        Text(
+            text = connectionStatusText,
+            color = connectionStatusColor,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.align(Alignment.Center)
+        )
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()

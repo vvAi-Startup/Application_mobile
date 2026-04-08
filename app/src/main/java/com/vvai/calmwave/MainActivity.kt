@@ -16,10 +16,17 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -131,6 +138,18 @@ class MainActivity : ComponentActivity() {
                         },
                         onFileClicked = { filePath ->
                             viewModel.playAudioFile(filePath)
+                        },
+                        onPreviousClicked = {
+                            val player = PlaybackPlayerHolder.getPlayer(context)
+                            if (player.hasPreviousMediaItem()) {
+                                player.seekToPreviousMediaItem()
+                            }
+                        },
+                        onNextClicked = {
+                            val player = PlaybackPlayerHolder.getPlayer(context)
+                            if (player.hasNextMediaItem()) {
+                                player.seekToNextMediaItem()
+                            }
                         },
                         onPauseResumeClicked = {
                             if (uiState.isPlaying) {
@@ -280,6 +299,8 @@ fun AudioPlayerScreen(
     onRecordClicked: () -> Unit,
     onStopClicked: () -> Unit,
     onFileClicked: (String) -> Unit,
+    onPreviousClicked: () -> Unit,
+    onNextClicked: () -> Unit,
     onPauseResumeClicked: () -> Unit,
     onStopPlaybackClicked: () -> Unit,
     onSeek: (Long) -> Unit,
@@ -334,6 +355,11 @@ fun AudioPlayerScreen(
                 ) {
                     // Slider para selecionar tempo (única barra de progresso)
                     var sliderPosition by remember { mutableStateOf(uiState.currentPosition.toFloat()) }
+                    val smoothSliderPosition by animateFloatAsState(
+                        targetValue = if (isSeeking) sliderPosition else uiState.currentPosition.toFloat(),
+                        animationSpec = tween(durationMillis = 140, easing = LinearEasing),
+                        label = "AudioProgressSmooth"
+                    )
                     
                     // Atualiza a posição do slider apenas se não estiver sendo arrastado
                     LaunchedEffect(uiState.currentPosition, isSeeking) {
@@ -344,7 +370,7 @@ fun AudioPlayerScreen(
                     }
                     
                     Slider(
-                        value = sliderPosition,
+                        value = smoothSliderPosition,
                         onValueChange = { newValue ->
                             if (!isSeeking) {
                                 isSeeking = true
@@ -357,14 +383,21 @@ fun AudioPlayerScreen(
                             
                             // Aguarda um pouco antes de permitir atualizações automáticas
                             // Delay maior para seek para trás para evitar conflitos
-                            val delayMs = if (bounded < uiState.currentPosition) 300L else 150L
+                            val delayMs = if (bounded < uiState.currentPosition) 220L else 120L
                             coroutineScope.launch {
                                 kotlinx.coroutines.delay(delayMs)
                                 isSeeking = false
                             }
                         },
                         valueRange = 0f..maxOf(uiState.totalDuration.toFloat(), 1f), // Evita divisão por zero
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(42.dp),
+                        colors = SliderDefaults.colors(
+                            thumbColor = Color(0xFF0A7D77),
+                            activeTrackColor = Color(0xFF0FA89A),
+                            inactiveTrackColor = Color(0xFFB7E3DE)
+                        ),
                         enabled = uiState.hasActiveAudio && !uiState.isProcessing // Só habilita quando há áudio ativo e não está processando
                     )
 
@@ -390,13 +423,26 @@ fun AudioPlayerScreen(
                     // Controles de reprodução
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceEvenly
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
+                        IconButton(onClick = onPreviousClicked) {
+                            Icon(
+                                imageVector = Icons.Filled.SkipPrevious,
+                                contentDescription = "Anterior"
+                            )
+                        }
                         Button(onClick = onPauseResumeClicked) {
                             Text(text = if (uiState.isPlaying) "Pausar" else "Continuar")
                         }
                         Button(onClick = onStopPlaybackClicked) {
                             Text(text = "Parar")
+                        }
+                        IconButton(onClick = onNextClicked) {
+                            Icon(
+                                imageVector = Icons.Filled.SkipNext,
+                                contentDescription = "Próximo"
+                            )
                         }
                     }
                 }

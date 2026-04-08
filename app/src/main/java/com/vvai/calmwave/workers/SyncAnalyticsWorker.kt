@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.work.*
 import com.vvai.calmwave.data.repository.AnalyticsRepository
 import com.vvai.calmwave.util.AppLogger
+import com.vvai.calmwave.util.SyncStatusTracker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
@@ -79,6 +80,7 @@ class SyncAnalyticsWorker(
     }
     
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
+        SyncStatusTracker.beginSync()
         return@withContext try {
             Log.d(TAG, "Iniciando sincronização offline-first...")
             
@@ -129,6 +131,8 @@ class SyncAnalyticsWorker(
             } else {
                 Result.failure()
             }
+        } finally {
+            SyncStatusTracker.endSync()
         }
     }
 }

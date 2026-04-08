@@ -8,12 +8,13 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.material3.Text
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlaylistPlay
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
@@ -28,6 +29,7 @@ import com.vvai.calmwave.R
 import com.vvai.calmwave.GravarActivity
 import com.vvai.calmwave.PlaylistActivity
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.Image
@@ -44,13 +46,19 @@ import com.vvai.calmwave.PlaybackForegroundService
 import com.vvai.calmwave.PlaybackPlayerHolder
 import androidx.compose.ui.tooling.preview.Preview
 import com.vvai.calmwave.ui.theme.CalmWaveTheme
+import com.vvai.calmwave.ui.components.WaveProgressBar
+import com.vvai.calmwave.util.resolveAudioDisplayName
 import kotlinx.coroutines.delay
 
 @Composable
 fun BottomNavigationBar(selected: String, modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    val barHeight = 72.dp
     val player = remember(context) { PlaybackPlayerHolder.getPlayer(context) }
+    val miniControlButtonSize = 48.dp
+    val miniControlIconSize = 32.dp
+    val miniPlayerRowHeight = 52.dp
+    val miniProgressHeight = 10.dp
+    val miniPlayerHeight = miniPlayerRowHeight + miniProgressHeight
 
     var hasMedia by remember { mutableStateOf(false) }
     var currentTitle by remember { mutableStateOf("") }
@@ -61,7 +69,7 @@ fun BottomNavigationBar(selected: String, modifier: Modifier = Modifier) {
         val item = player.currentMediaItem
         val path = item?.localConfiguration?.uri?.path ?: item?.mediaId.orEmpty()
         hasMedia = player.mediaItemCount > 0 && path.isNotBlank()
-        currentTitle = path.substringAfterLast('/').ifBlank { "CalmWave" }
+        currentTitle = resolveAudioDisplayName(context, path)
         isPlaying = player.isPlaying
         val duration = player.duration
         val position = player.currentPosition
@@ -98,9 +106,17 @@ fun BottomNavigationBar(selected: String, modifier: Modifier = Modifier) {
             if (hasMedia) {
                 refreshMiniPlayerState()
             }
-            delay(500)
+            delay(160)
         }
     }
+
+    val smoothProgress by animateFloatAsState(
+        targetValue = progress,
+        animationSpec = tween(durationMillis = 180),
+        label = "miniPlayerProgress"
+    )
+
+    val barHeight = 72.dp
     
     // Animações para Playlists
     val playlistsIconSize by animateDpAsState(
@@ -126,79 +142,18 @@ fun BottomNavigationBar(selected: String, modifier: Modifier = Modifier) {
         label = "gravacaoColor"
     )
     
-    Column(
+    Box(
         modifier = modifier
             .fillMaxWidth()
-            .background(Color(0xFF222222))
             .navigationBarsPadding()
-            .height(barHeight),
-        verticalArrangement = Arrangement.Bottom
+            .height(barHeight)
+            .background(Color(0xFF222222))
     ) {
-        if (hasMedia) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(24.dp)
-                    .padding(horizontal = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = currentTitle,
-                    color = Color.White,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-                IconButton(
-                    onClick = {
-                        if (isPlaying) {
-                            player.pause()
-                        } else {
-                            PlaybackForegroundService.start(context)
-                            player.play()
-                        }
-                    },
-                    modifier = Modifier.size(24.dp)
-                ) {
-                    Icon(
-                        imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                        contentDescription = if (isPlaying) "Pausar" else "Tocar",
-                        tint = Color.White,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
-                IconButton(
-                    onClick = {
-                        player.pause()
-                        player.stop()
-                        player.clearMediaItems()
-                        PlaybackForegroundService.stop(context)
-                        refreshMiniPlayerState()
-                    },
-                    modifier = Modifier.size(24.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Stop,
-                        contentDescription = "Parar",
-                        tint = Color.White,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
-            }
-            LinearProgressIndicator(
-                progress = { progress },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(2.dp),
-                color = Color(0xFF2DC9C6),
-                trackColor = Color.White.copy(alpha = 0.2f)
-            )
-        }
-
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(if (hasMedia) 46.dp else 70.dp),
+                .height(70.dp)
+                .align(Alignment.BottomCenter),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -275,6 +230,110 @@ fun BottomNavigationBar(selected: String, modifier: Modifier = Modifier) {
                 Text(
                     text = "Gravação",
                     color = gravacaoColor,
+                )
+            }
+        }
+
+        if (hasMedia) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.TopCenter)
+                    .offset(y = -miniPlayerHeight)
+                    .background(Color(0xFF222222))
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(miniPlayerRowHeight)
+                        .padding(horizontal = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = currentTitle,
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(
+                        onClick = {
+                            PlaybackForegroundService.start(context)
+                            if (player.hasPreviousMediaItem()) {
+                                player.seekToPreviousMediaItem()
+                            }
+                        },
+                        modifier = Modifier.size(miniControlButtonSize)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.SkipPrevious,
+                            contentDescription = "Anterior",
+                            tint = Color.White,
+                            modifier = Modifier.size(miniControlIconSize)
+                        )
+                    }
+                    IconButton(
+                        onClick = {
+                            if (isPlaying) {
+                                player.pause()
+                            } else {
+                                PlaybackForegroundService.start(context)
+                                player.play()
+                            }
+                        },
+                        modifier = Modifier.size(miniControlButtonSize)
+                    ) {
+                        Icon(
+                            imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                            contentDescription = if (isPlaying) "Pausar" else "Tocar",
+                            tint = Color.White,
+                            modifier = Modifier.size(miniControlIconSize)
+                        )
+                    }
+                    IconButton(
+                        onClick = {
+                            PlaybackForegroundService.start(context)
+                            if (player.hasNextMediaItem()) {
+                                player.seekToNextMediaItem()
+                            }
+                        },
+                        modifier = Modifier.size(miniControlButtonSize)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.SkipNext,
+                            contentDescription = "Próximo",
+                            tint = Color.White,
+                            modifier = Modifier.size(miniControlIconSize)
+                        )
+                    }
+                    IconButton(
+                        onClick = {
+                            player.pause()
+                            player.stop()
+                            player.clearMediaItems()
+                            PlaybackForegroundService.stop(context)
+                            refreshMiniPlayerState()
+                        },
+                        modifier = Modifier.size(miniControlButtonSize)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Stop,
+                            contentDescription = "Parar",
+                            tint = Color.White,
+                            modifier = Modifier.size(miniControlIconSize)
+                        )
+                    }
+                }
+
+                WaveProgressBar(
+                    progress = smoothProgress,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(miniProgressHeight),
+                    barColor = Color(0xFF2DC9C6),
+                    trackColor = Color.White.copy(alpha = 0.20f),
+                    waveColor = Color.White.copy(alpha = 0.45f),
+                    animationDurationMs = 1400
                 )
             }
         }

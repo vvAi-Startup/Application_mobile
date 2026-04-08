@@ -7,7 +7,6 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.Arrangement.Center
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
@@ -16,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import com.vvai.calmwave.data.remote.ApiClient
+import com.vvai.calmwave.ui.components.WaveProgressBar
 import com.vvai.calmwave.util.clearAuthSession
 import com.vvai.calmwave.util.enterImmersiveMode
 import com.vvai.calmwave.util.getAccessToken
@@ -75,7 +75,16 @@ class SplashActivity : ComponentActivity() {
                         startActivity(intent2)
                         finish()
                     }
-                    LinearProgressIndicator(progress = progress, modifier = Modifier.fillMaxWidth())
+                    WaveProgressBar(
+                        progress = progress,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(12.dp),
+                        barColor = androidx.compose.ui.graphics.Color(0xFF2DC9C6),
+                        trackColor = androidx.compose.ui.graphics.Color(0x33000000),
+                        waveColor = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.38f),
+                        animationDurationMs = 1600
+                    )
                 }
             }
         }

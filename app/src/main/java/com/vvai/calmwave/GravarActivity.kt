@@ -520,7 +520,10 @@ class GravarActivity : ComponentActivity() {
                                             shape = RoundedCornerShape(14.dp),
                                             colors = OutlinedTextFieldDefaults.colors(
                                                 focusedBorderColor = Color(0xFF12B089),
-                                                focusedLabelColor = Color(0xFF0B6B63)
+                                                focusedLabelColor = Color(0xFF0B6B63),
+                                                focusedTextColor = Color(0xFF1C1C1C),
+                                                unfocusedTextColor = Color(0xFF1C1C1C),
+                                                cursorColor = Color(0xFF0B6B63)
                                             )
                                         )
 
@@ -601,7 +604,10 @@ class GravarActivity : ComponentActivity() {
                                         shape = RoundedCornerShape(14.dp),
                                         colors = OutlinedTextFieldDefaults.colors(
                                             focusedBorderColor = Color(0xFF12B089),
-                                            focusedLabelColor = Color(0xFF0B6B63)
+                                            focusedLabelColor = Color(0xFF0B6B63),
+                                            focusedTextColor = Color(0xFF1C1C1C),
+                                            unfocusedTextColor = Color(0xFF1C1C1C),
+                                            cursorColor = Color(0xFF0B6B63)
                                         )
                                     )
                                 },

@@ -7,6 +7,9 @@ plugins {
     id("com.google.devtools.ksp") version "2.0.21-1.0.27"
 }
 
+// Workaround para lock intermitente no Windows em app/build/outputs/apk/debug
+layout.buildDirectory.set(file("$projectDir/build-out"))
+
 android {
     namespace = "com.vvai.calmwave"
     compileSdk = 36
@@ -107,6 +110,8 @@ dependencies {
     // ExoPlayer Media3 (versão mais recente recomendada)
     implementation("androidx.media3:media3-exoplayer:1.8.0")
     implementation("androidx.media3:media3-ui:1.8.0")
+    // MediaStyle notification + MediaSessionCompat
+    implementation("androidx.media:media:1.7.0")
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

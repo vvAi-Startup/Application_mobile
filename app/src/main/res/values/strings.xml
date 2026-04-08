@@ -1,3 +1,7 @@
 <resources>
     <string name="app_name">CalmWave</string>
+    <string name="notif_action_previous">Anterior</string>
+    <string name="notif_action_play_pause">Tocar ou pausar</string>
+    <string name="notif_action_next">Próximo</string>
+    <string name="notif_action_stop">Parar</string>
 </resources>

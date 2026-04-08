@@ -13,6 +13,7 @@ import com.vvai.calmwave.data.model.PendingAudioUpload
 import com.vvai.calmwave.data.remote.ApiClient
 import com.vvai.calmwave.util.AppLogger
 import com.vvai.calmwave.util.NetworkMonitor
+import com.vvai.calmwave.util.SyncStatusTracker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -177,12 +178,12 @@ class AnalyticsRepository(context: Context) {
      * Retorna número de eventos sincronizados com sucesso
      */
     suspend fun syncPendingEvents(): Int = withContext(Dispatchers.IO) {
-        try {
+        withSyncIndicator {
             val unsyncedEvents = analyticsDao.getUnsyncedEventsLimited(limit = 20)
             
             if (unsyncedEvents.isEmpty()) {
                 Log.d(TAG, "Nenhum evento para sincronizar")
-                return@withContext 0
+                return@withSyncIndicator 0
             }
             
             Log.d(TAG, "Sincronizando ${unsyncedEvents.size} eventos...")
@@ -192,9 +193,6 @@ class AnalyticsRepository(context: Context) {
             val syncedCount = syncIndividually(eventsToSync)
             
             syncedCount
-        } catch (e: Exception) {
-            AppLogger.e(TAG, "SYNC_EVENTS_FAILED", "Erro na sincronização: ${e.message}", e)
-            0
         }
     }
     
@@ -259,56 +257,58 @@ class AnalyticsRepository(context: Context) {
         metrics: AudioProcessingMetrics
     ): Boolean = withContext(Dispatchers.IO) {
         try {
-            if (!audioFile.exists() || audioFile.length() <= 44) {
-                AppLogger.w(TAG, "UPLOAD_FILE_INVALID", "Arquivo inválido para upload: ${audioFile.absolutePath}")
-                return@withContext false
-            }
+            withSyncIndicator {
+                if (!audioFile.exists() || audioFile.length() <= 44) {
+                    AppLogger.w(TAG, "UPLOAD_FILE_INVALID", "Arquivo inválido para upload: ${audioFile.absolutePath}")
+                    return@withSyncIndicator false
+                }
 
-            // Offline-first: se estiver offline, armazena em cache e sincroniza depois
-            if (!networkMonitor.isCurrentlyOnline()) {
-                enqueueAudioUpload(audioFile, metrics)
-                Log.d(TAG, "📦 Áudio enfileirado para sincronização futura (offline): ${audioFile.name}")
-                return@withContext true
-            }
+                // Offline-first: se estiver offline, armazena em cache e sincroniza depois
+                if (!networkMonitor.isCurrentlyOnline()) {
+                    enqueueAudioUpload(audioFile, metrics)
+                    Log.d(TAG, "📦 Áudio enfileirado para sincronização futura (offline): ${audioFile.name}")
+                    return@withSyncIndicator true
+                }
 
-            if (ApiClient.getAuthToken().isNullOrBlank()) {
-                AppLogger.w(TAG, "UPLOAD_AUTH_MISSING", "Token de usuário ausente; adiando sincronização de metadados")
-                enqueueAudioUpload(audioFile, metrics)
-                return@withContext false
-            }
+                if (ApiClient.getAuthToken().isNullOrBlank()) {
+                    AppLogger.w(TAG, "UPLOAD_AUTH_MISSING", "Token de usuário ausente; adiando sincronização de metadados")
+                    enqueueAudioUpload(audioFile, metrics)
+                    return@withSyncIndicator false
+                }
 
-            val payload = AudioSyncPayloadMapper.fromProcessedAudio(
-                audioFile = audioFile,
-                metrics = metrics,
-                durationSeconds = (metrics.recordingDurationMs / 1000.0).coerceAtLeast(0.0),
-                recordedAt = toUtcIso8601(audioFile.lastModified()),
-                resolvedDeviceOrigin = resolveDeviceOrigin(metrics.deviceOrigin)
-            )
-
-            val response = syncProcessedAudioAuthenticated(audioFile, payload)
-            
-            if (response.isSuccessful) {
-                Log.d(TAG, "✅ Áudio processado sincronizado com sucesso: ${audioFile.name}")
-                
-                // Registra evento de sincronização bem-sucedida com as métricas
-                logEvent(
-                    eventType = "AUDIO_UPLOADED",
-                    details = mapOf(
-                        "filename" to audioFile.name,
-                        "file_size_bytes" to audioFile.length(),
-                        "processing_time_ms" to metrics.processingTimeMs,
-                        "was_offline_processed" to metrics.wasOfflineProcessed,
-                        "model_version" to metrics.modelVersion
-                    ),
-                    screen = "Upload",
-                    level = "info"
+                val payload = AudioSyncPayloadMapper.fromProcessedAudio(
+                    audioFile = audioFile,
+                    metrics = metrics,
+                    durationSeconds = (metrics.recordingDurationMs / 1000.0).coerceAtLeast(0.0),
+                    recordedAt = toUtcIso8601(audioFile.lastModified()),
+                    resolvedDeviceOrigin = resolveDeviceOrigin(metrics.deviceOrigin)
                 )
-                
-                true
-            } else {
-                AppLogger.e(TAG, "UPLOAD_HTTP_FAILED", "Falha ao sincronizar áudio processado: ${response.code()}")
-                enqueueAudioUpload(audioFile, metrics)
-                false
+
+                val response = syncProcessedAudioAuthenticated(audioFile, payload)
+
+                if (response.isSuccessful) {
+                    Log.d(TAG, "✅ Áudio processado sincronizado com sucesso: ${audioFile.name}")
+
+                    // Registra evento de sincronização bem-sucedida com as métricas
+                    logEvent(
+                        eventType = "AUDIO_UPLOADED",
+                        details = mapOf(
+                            "filename" to audioFile.name,
+                            "file_size_bytes" to audioFile.length(),
+                            "processing_time_ms" to metrics.processingTimeMs,
+                            "was_offline_processed" to metrics.wasOfflineProcessed,
+                            "model_version" to metrics.modelVersion
+                        ),
+                        screen = "Upload",
+                        level = "info"
+                    )
+
+                    true
+                } else {
+                    AppLogger.e(TAG, "UPLOAD_HTTP_FAILED", "Falha ao sincronizar áudio processado: ${response.code()}")
+                    enqueueAudioUpload(audioFile, metrics)
+                    false
+                }
             }
         } catch (e: Exception) {
             AppLogger.e(TAG, "UPLOAD_EXCEPTION", "Erro ao sincronizar áudio processado: ${e.message}", e)
@@ -336,66 +336,80 @@ class AnalyticsRepository(context: Context) {
      * Sincroniza uploads de áudio pendentes quando houver conectividade.
      */
     suspend fun syncPendingAudioUploads(): Int = withContext(Dispatchers.IO) {
-        if (!networkMonitor.isCurrentlyOnline()) {
-            Log.d(TAG, "Sem conexão - mantendo uploads pendentes em cache")
-            return@withContext 0
-        }
-
-        if (ApiClient.getAuthToken().isNullOrBlank()) {
-            AppLogger.w(TAG, "PENDING_AUTH_MISSING", "Token de usuário ausente; uploads pendentes continuarão em fila")
-            return@withContext 0
-        }
-
-        val pending = pendingAudioUploadDao
-            .getPendingUploads(limit = 20)
-            .filter { it.syncAttempts < MAX_UPLOAD_SYNC_ATTEMPTS }
-
-        if (pending.isEmpty()) {
-            return@withContext 0
-        }
-
-        var syncedCount = 0
-        for (upload in pending) {
-            val file = File(upload.filePath)
-
-            if (!file.exists() || file.length() <= 44) {
-                AppLogger.w(TAG, "PENDING_FILE_INVALID", "Removendo pendência inválida (arquivo ausente/corrompido): ${upload.filePath}")
-                pendingAudioUploadDao.deleteById(upload.id)
-                continue
+        withSyncIndicator {
+            if (!networkMonitor.isCurrentlyOnline()) {
+                Log.d(TAG, "Sem conexão - mantendo uploads pendentes em cache")
+                return@withSyncIndicator 0
             }
 
-            try {
-                val payload = AudioSyncPayloadMapper.fromProcessedAudio(
-                    audioFile = file,
-                    metrics = null,
-                    durationSeconds = estimateWavDurationSeconds(file),
-                    recordedAt = toUtcIso8601(file.lastModified()),
-                    resolvedDeviceOrigin = resolveDeviceOrigin(upload.deviceOrigin)
-                )
+            if (ApiClient.getAuthToken().isNullOrBlank()) {
+                AppLogger.w(TAG, "PENDING_AUTH_MISSING", "Token de usuário ausente; uploads pendentes continuarão em fila")
+                return@withSyncIndicator 0
+            }
 
-                val response = syncProcessedAudioAuthenticated(file, payload)
+            val pending = pendingAudioUploadDao
+                .getPendingUploads(limit = 20)
+                .filter { it.syncAttempts < MAX_UPLOAD_SYNC_ATTEMPTS }
 
-                if (response.isSuccessful) {
+            if (pending.isEmpty()) {
+                return@withSyncIndicator 0
+            }
+
+            var syncedCount = 0
+            for (upload in pending) {
+                val file = File(upload.filePath)
+
+                if (!file.exists() || file.length() <= 44) {
+                    AppLogger.w(TAG, "PENDING_FILE_INVALID", "Removendo pendência inválida (arquivo ausente/corrompido): ${upload.filePath}")
                     pendingAudioUploadDao.deleteById(upload.id)
-                    syncedCount++
-                    Log.d(TAG, "✅ Upload pendente sincronizado: ${upload.fileName}")
-                } else {
+                    continue
+                }
+
+                try {
+                    val payload = AudioSyncPayloadMapper.fromProcessedAudio(
+                        audioFile = file,
+                        metrics = null,
+                        durationSeconds = estimateWavDurationSeconds(file),
+                        recordedAt = toUtcIso8601(file.lastModified()),
+                        resolvedDeviceOrigin = resolveDeviceOrigin(upload.deviceOrigin)
+                    )
+
+                    val response = syncProcessedAudioAuthenticated(file, payload)
+
+                    if (response.isSuccessful) {
+                        pendingAudioUploadDao.deleteById(upload.id)
+                        syncedCount++
+                        Log.d(TAG, "✅ Upload pendente sincronizado: ${upload.fileName}")
+                    } else {
+                        pendingAudioUploadDao.incrementSyncAttempts(
+                            id = upload.id,
+                            error = "HTTP ${response.code()}"
+                        )
+                        AppLogger.w(TAG, "PENDING_UPLOAD_HTTP", "Falha ao sincronizar upload pendente ${upload.id}: ${response.code()}")
+                    }
+                } catch (e: Exception) {
                     pendingAudioUploadDao.incrementSyncAttempts(
                         id = upload.id,
-                        error = "HTTP ${response.code()}"
+                        error = e.message
                     )
-                    AppLogger.w(TAG, "PENDING_UPLOAD_HTTP", "Falha ao sincronizar upload pendente ${upload.id}: ${response.code()}")
+                    AppLogger.w(TAG, "PENDING_UPLOAD_EXCEPTION", "Erro ao sincronizar upload pendente ${upload.id}: ${e.message}", e)
                 }
-            } catch (e: Exception) {
-                pendingAudioUploadDao.incrementSyncAttempts(
-                    id = upload.id,
-                    error = e.message
-                )
-                AppLogger.w(TAG, "PENDING_UPLOAD_EXCEPTION", "Erro ao sincronizar upload pendente ${upload.id}: ${e.message}", e)
             }
-        }
 
-        syncedCount
+            syncedCount
+        }
+    }
+
+    private suspend fun <T> withSyncIndicator(block: suspend () -> T): T {
+        SyncStatusTracker.beginSync()
+        return try {
+            block()
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "SYNC_BLOCK_FAILED", "Erro durante operação de sincronização: ${e.message}", e)
+            throw e
+        } finally {
+            SyncStatusTracker.endSync()
+        }
     }
 
     private suspend fun syncProcessedAudioAuthenticated(
