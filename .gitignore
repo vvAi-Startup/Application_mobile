@@ -1,15 +1,55 @@
-*.iml
-.gradle
-/local.properties
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
-.DS_Store
-/build
-/captures
-.externalNativeBuild
-.cxx
+# -----------------------------
+# Kotlin / Android / Gradle
+# -----------------------------
+.gradle/
+build/
+**/build/
+.kotlin/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Local SDK/NDK config
 local.properties
+
+# -----------------------------
+# Android Studio / IntelliJ
+# -----------------------------
+.idea/caches/
+.idea/libraries/
+.idea/modules.xml
+.idea/workspace.xml
+.idea/navEditor.xml
+.idea/assetWizardSettings.xml
+.idea/shelf/
+.idea/httpRequests/
+
+*.iml
+*.ipr
+*.iws
+
+# -----------------------------
+# Kotlin / Java artifacts
+# -----------------------------
+*.class
+*.jar
+*.war
+*.ear
+
+# Kotlin metadata/cache
+*.kotlin_module
+
+# -----------------------------
+# Logs / temp
+# -----------------------------
+*.log
+*.tmp
+*.swp
+*.swo
+
+# -----------------------------
+# OS files
+# -----------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
