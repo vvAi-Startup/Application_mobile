@@ -292,6 +292,12 @@ private fun formatTime(milliseconds: Long): String {
     return String.format("%02d:%02d", minutes, seconds)
 }
 
+private fun formatRemainingTime(milliseconds: Long): String {
+    val remaining = milliseconds.coerceAtLeast(0L)
+    if (remaining <= 0L) return "00:00"
+    return "-${formatTime(remaining)}"
+}
+
 // 5. O Composable agora recebe o estado da UI e callbacks de evento
 @Composable
 fun AudioPlayerScreen(
@@ -413,7 +419,7 @@ fun AudioPlayerScreen(
                             style = MaterialTheme.typography.bodySmall
                         )
                         Text(
-                            text = formatTime(uiState.totalDuration),
+                            text = formatRemainingTime(uiState.totalDuration - uiState.currentPosition),
                             style = MaterialTheme.typography.bodySmall
                         )
                     }

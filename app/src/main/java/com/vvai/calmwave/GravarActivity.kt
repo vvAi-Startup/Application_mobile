@@ -45,9 +45,12 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import kotlin.math.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.yield
 import com.vvai.calmwave.data.remote.ApiClient
 import com.vvai.calmwave.util.clearAuthSession
@@ -128,7 +131,7 @@ class GravarActivity : ComponentActivity() {
                 val isRecording = uiState.isRecording
                 val isPaused = uiState.isPaused
                 val isProcessing = uiState.isProcessing
-                val elapsedSeconds = uiState.currentPosition / 1000 // converte ms para segundos
+                val elapsedSeconds = uiState.recordingElapsedMs / 1000 // converte ms para segundos
                 var showFinishOptionsDialog by remember { mutableStateOf(false) }
                 var showRenameDialog by remember { mutableStateOf(false) }
                 var customAudioName by remember { mutableStateOf("") }
@@ -141,6 +144,37 @@ class GravarActivity : ComponentActivity() {
                 var newPlaylistName by remember { mutableStateOf("") }
                 var wasProcessing by remember { mutableStateOf(false) }
                 var finishRequestedAtMs by remember { mutableStateOf<Long?>(null) }
+                var isSeekingPlayback by remember { mutableStateOf(false) }
+                var playbackSliderPosition by remember { mutableStateOf(0f) }
+                var recordingPlaybackPositionMs by remember { mutableStateOf(0L) }
+                var recordingFixedDurationMs by remember { mutableStateOf<Long?>(null) }
+                val playbackScope = rememberCoroutineScope()
+                val liveRecordingDurationMs = if (isRecording) {
+                    maxOf(
+                        uiState.totalDuration,
+                        uiState.recordingElapsedMs,
+                        uiState.currentPosition,
+                        1L
+                    )
+                } else {
+                    uiState.totalDuration.coerceAtLeast(0L)
+                }
+                val timelineDurationMs = if (isRecording && !uiState.hasActiveAudio) {
+                    maxOf(recordingFixedDurationMs ?: liveRecordingDurationMs, 1L)
+                } else {
+                    liveRecordingDurationMs
+                }
+                val timelinePositionMs = if (isRecording && !uiState.hasActiveAudio) {
+                    recordingPlaybackPositionMs.coerceIn(0L, timelineDurationMs)
+                } else {
+                    uiState.currentPosition
+                }
+                val displayPositionMs = if (isSeekingPlayback) {
+                    playbackSliderPosition.toLong().coerceIn(0L, timelineDurationMs)
+                } else {
+                    timelinePositionMs.coerceIn(0L, timelineDurationMs)
+                }
+                val remainingMs = (timelineDurationMs - displayPositionMs).coerceAtLeast(0L)
 
                 val blinkTransition = rememberInfiniteTransition(label = "recordingBlink")
                 val blinkAlpha by blinkTransition.animateFloat(
@@ -156,8 +190,27 @@ class GravarActivity : ComponentActivity() {
                 // LaunchedEffect para atualizar o tempo de gravação
                 LaunchedEffect(isRecording, isPaused) {
                     while (isRecording && !isPaused) {
-                        viewModel.incrementCurrentPosition(1000) // incrementa 1 segundo (1000 ms)
-                        kotlinx.coroutines.delay(1000)
+                        viewModel.incrementCurrentPosition(100)
+                        kotlinx.coroutines.delay(100)
+                    }
+                }
+
+                LaunchedEffect(isRecording) {
+                    if (isRecording) {
+                        recordingPlaybackPositionMs = uiState.recordingElapsedMs.coerceAtLeast(0L)
+                        recordingFixedDurationMs = null
+                    }
+                }
+
+                LaunchedEffect(isRecording, isPaused, uiState.hasActiveAudio, isSeekingPlayback, recordingFixedDurationMs) {
+                    while (isRecording && !isPaused && !uiState.hasActiveAudio && !isSeekingPlayback) {
+                        val playbackEnd = (recordingFixedDurationMs ?: uiState.recordingElapsedMs)
+                            .coerceAtLeast(0L)
+                        recordingPlaybackPositionMs = min(
+                            recordingPlaybackPositionMs.coerceAtLeast(0L) + 100L,
+                            playbackEnd
+                        )
+                        delay(100)
                     }
                 }
 
@@ -168,6 +221,12 @@ class GravarActivity : ComponentActivity() {
                         showFinishOptionsDialog = true
                     }
                     wasProcessing = isProcessing
+                }
+
+                LaunchedEffect(timelinePositionMs, isRecording, uiState.hasActiveAudio, isSeekingPlayback) {
+                    if ((uiState.hasActiveAudio || isRecording) && !isSeekingPlayback) {
+                        playbackSliderPosition = timelinePositionMs.toFloat()
+                    }
                 }
 
                 Surface(
@@ -291,6 +350,99 @@ class GravarActivity : ComponentActivity() {
                                         }
 
                                         Spacer(modifier = Modifier.height(8.dp))
+
+                                        if ((uiState.hasActiveAudio || isRecording) && timelineDurationMs > 0L) {
+                                            Column(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(top = 4.dp),
+                                                horizontalAlignment = Alignment.CenterHorizontally
+                                            ) {
+                                                val maxSliderValue = maxOf(timelineDurationMs.toFloat(), 1f)
+                                                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                                                    Slider(
+                                                        value = playbackSliderPosition.coerceIn(0f, maxSliderValue),
+                                                        onValueChange = { newValue: Float ->
+                                                            if (!isSeekingPlayback) isSeekingPlayback = true
+                                                            playbackSliderPosition = newValue
+                                                        },
+                                                        onValueChangeFinished = {
+                                                            val bounded = playbackSliderPosition
+                                                                .toLong()
+                                                                .coerceIn(0L, timelineDurationMs)
+                                                            if (isRecording && !uiState.hasActiveAudio) {
+                                                                recordingFixedDurationMs = uiState.recordingElapsedMs
+                                                                    .coerceAtLeast(1L)
+                                                                recordingPlaybackPositionMs = bounded
+                                                            }
+                                                            viewModel.seekTo(bounded)
+                                                            playbackScope.launch {
+                                                                delay(120)
+                                                                isSeekingPlayback = false
+                                                            }
+                                                        },
+                                                        valueRange = 0f..maxSliderValue,
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .height(36.dp),
+                                                        colors = SliderDefaults.colors(
+                                                            thumbColor = Color(0xFF0A7D77),
+                                                            activeTrackColor = Color(0xFF12B089),
+                                                            inactiveTrackColor = Color(0xFFB7E3DE)
+                                                        )
+                                                    )
+                                                }
+
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.End
+                                                ) {
+                                                    Text(
+                                                        text = formatRemainingDuration(remainingMs),
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = Color(0xFF0B6B63)
+                                                    )
+                                                }
+
+                                                Spacer(modifier = Modifier.height(6.dp))
+
+                                                Row(
+                                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    OutlinedButton(
+                                                        onClick = {
+                                                            val rewindTo = (displayPositionMs - 30_000L).coerceAtLeast(0L)
+                                                            if (isRecording && !uiState.hasActiveAudio) {
+                                                                recordingFixedDurationMs = uiState.recordingElapsedMs
+                                                                    .coerceAtLeast(1L)
+                                                                recordingPlaybackPositionMs = rewindTo
+                                                            }
+                                                            viewModel.seekTo(rewindTo)
+                                                        },
+                                                        shape = RoundedCornerShape(18.dp)
+                                                    ) {
+                                                        Text("-30s")
+                                                    }
+
+                                                    OutlinedButton(
+                                                        onClick = {
+                                                            val forwardTo = (displayPositionMs + 30_000L)
+                                                                .coerceAtMost(timelineDurationMs)
+                                                            if (isRecording && !uiState.hasActiveAudio) {
+                                                                recordingFixedDurationMs = uiState.recordingElapsedMs
+                                                                    .coerceAtLeast(1L)
+                                                                recordingPlaybackPositionMs = forwardTo
+                                                            }
+                                                            viewModel.seekTo(forwardTo)
+                                                        },
+                                                        shape = RoundedCornerShape(18.dp)
+                                                    ) {
+                                                        Text("+30s")
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -921,4 +1073,10 @@ fun formatDuration(seconds: Long): String {
     val mins = (seconds % 3600) / 60
     val secs = seconds % 60
     return String.format("%02d:%02d:%02d", hrs, mins, secs)
+}
+
+fun formatRemainingDuration(remainingMillis: Long): String {
+    val safeRemaining = remainingMillis.coerceAtLeast(0L)
+    if (safeRemaining <= 0L) return "00:00:00"
+    return "-${formatDuration(safeRemaining / 1000)}"
 }

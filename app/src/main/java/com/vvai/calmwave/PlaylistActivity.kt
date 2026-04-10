@@ -497,7 +497,7 @@ class PlaylistActivity : ComponentActivity() {
                                                 style = MaterialTheme.typography.bodySmall
                                             )
                                             Text(
-                                                text = formatMillis(duration.value),
+                                                text = formatRemainingMillis(duration.value - position.value),
                                                 color = Color.White,
                                                 style = MaterialTheme.typography.bodySmall
                                             )
@@ -835,6 +835,12 @@ class PlaylistActivity : ComponentActivity() {
         val minutes = totalSeconds / 60
         val seconds = totalSeconds % 60
         return "%02d:%02d".format(minutes, seconds)
+    }
+
+    private fun formatRemainingMillis(millis: Long): String {
+        val remaining = millis.coerceAtLeast(0L)
+        if (remaining <= 0L) return "00:00"
+        return "-${formatMillis(remaining)}"
     }
 }
 

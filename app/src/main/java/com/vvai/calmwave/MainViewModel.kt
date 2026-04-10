@@ -44,6 +44,7 @@ class MainViewModel(
         val statusText: String = "Pronto para gravar",
         val isPlaying: Boolean = false,
         val isPaused: Boolean = false,
+        val recordingElapsedMs: Long = 0,
         val currentPosition: Long = 0,
         val totalDuration: Long = 0,
         val playbackProgress: Float = 0f,
@@ -108,7 +109,11 @@ class MainViewModel(
             _uiState.value = _uiState.value.copy(
                 isRecording = true,
                 statusText = "Gravando...",
-                isPlaying = false
+                isPlaying = false,
+                recordingElapsedMs = 0,
+                currentPosition = 0,
+                totalDuration = 0,
+                playbackProgress = 0f
             )
 
             // Para qualquer reprodução anterior
@@ -219,7 +224,7 @@ class MainViewModel(
                 isRecording = false,
                 isProcessing = true,
                 statusText = "Finalizando processamento...",
-                currentPosition = 0
+                recordingElapsedMs = 0
             )
             
             try {
@@ -427,7 +432,12 @@ class MainViewModel(
 
     fun seekTo(timeMs: Long) {
         // Atualiza imediatamente a posição na UI para feedback visual instantâneo
-        val boundedTime = timeMs.coerceIn(0L, _uiState.value.totalDuration)
+        val maxSeekable = maxOf(
+            _uiState.value.totalDuration,
+            _uiState.value.recordingElapsedMs,
+            _uiState.value.currentPosition
+        )
+        val boundedTime = timeMs.coerceIn(0L, maxSeekable)
         
         // Atualiza a UI imediatamente para resposta rápida
         _uiState.value = _uiState.value.copy(
@@ -453,7 +463,7 @@ class MainViewModel(
     // Incrementa o tempo atual de gravação (em ms)
     fun incrementCurrentPosition(deltaMs: Long) {
         _uiState.value = _uiState.value.copy(
-            currentPosition = _uiState.value.currentPosition + deltaMs
+            recordingElapsedMs = _uiState.value.recordingElapsedMs + deltaMs
         )
     }
 
@@ -479,6 +489,11 @@ class MainViewModel(
 
                     // Determina se há áudio ativo (reproduzindo ou pausado)
                     val hasActiveAudio = currentPlayingFile != null && totalDuration > 0
+
+                    if (_uiState.value.isRecording && !hasActiveAudio) {
+                        delay(pollingMs)
+                        continue
+                    }
 
                     // Atualiza o estado apenas se houver uma mudança significativa
                     if (_uiState.value.isPlaying != isPlayingFromService ||

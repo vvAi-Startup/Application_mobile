@@ -12,17 +12,15 @@ captures/
 # Local SDK/NDK config
 local.properties
 
+# Android SDK local (nunca deve ser commitado)
+.android-sdk/
+.android/
+
 # -----------------------------
 # Android Studio / IntelliJ
+# (ignorar a pasta .idea inteira é mais seguro)
 # -----------------------------
-.idea/caches/
-.idea/libraries/
-.idea/modules.xml
-.idea/workspace.xml
-.idea/navEditor.xml
-.idea/assetWizardSettings.xml
-.idea/shelf/
-.idea/httpRequests/
+.idea/
 
 *.iml
 *.ipr
@@ -53,3 +51,10 @@ local.properties
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# -----------------------------
+# Variáveis de ambiente
+# -----------------------------
+.env
+.env.local
+.env.*.local
