@@ -45,12 +45,9 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.unit.LayoutDirection
 import kotlin.math.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.yield
 import com.vvai.calmwave.data.remote.ApiClient
 import com.vvai.calmwave.util.clearAuthSession
@@ -144,45 +141,7 @@ class GravarActivity : ComponentActivity() {
                 var newPlaylistName by remember { mutableStateOf("") }
                 var wasProcessing by remember { mutableStateOf(false) }
                 var finishRequestedAtMs by remember { mutableStateOf<Long?>(null) }
-                // ── Slider state  (3 orthogonal flags, no timers) ──────────────────────────
-                // isDragging        : true ONLY while finger is on the slider thumb.
-                //                     Cleared immediately in onValueChangeFinished.
-                // postSeekTargetMs  : holds display position after a seek until
-                //                     hasActiveAudio confirms the audio engine landed.
-                //                     -1L = not in post-seek hold.
-                //                     Cleared reactively by LaunchedEffect(hasActiveAudio).
-                // frozenRecordingDurationMs : freezes timeline duration so the bar
-                //                     doesn't grow while the user reviews a past segment.
-                //                     null = live mode (duration follows recordingElapsedMs).
-                var isDragging by remember { mutableStateOf(false) }
-                var dragPositionMs by remember { mutableStateOf(0L) }
-                var postSeekTargetMs by remember { mutableStateOf(-1L) }
-                var frozenRecordingDurationMs by remember { mutableStateOf<Long?>(null) }
-                val playbackScope = rememberCoroutineScope()
 
-                // ── Derived timeline values (pure expressions, never written by effects) ──
-                val timelineDurationMs: Long = when {
-                    isRecording ->
-                        (frozenRecordingDurationMs
-                            ?: uiState.recordingElapsedMs).coerceAtLeast(1L)
-                    else -> uiState.totalDuration.coerceAtLeast(0L)
-                }
-
-                // Priority: drag gesture > post-seek hold > audio position > live edge
-                val timelinePositionMs: Long = when {
-                    isDragging ->
-                        dragPositionMs.coerceIn(0L, timelineDurationMs)
-                    postSeekTargetMs >= 0L ->
-                        postSeekTargetMs.coerceIn(0L, timelineDurationMs)
-                    isRecording && uiState.hasActiveAudio ->
-                        uiState.currentPosition.coerceIn(0L, timelineDurationMs)
-                    isRecording ->
-                        timelineDurationMs          // live edge = right side of bar
-                    else ->
-                        uiState.currentPosition.coerceIn(0L, timelineDurationMs)
-                }
-                val displayPositionMs = timelinePositionMs
-                val remainingMs = (timelineDurationMs - displayPositionMs).coerceAtLeast(0L)
 
                 val blinkTransition = rememberInfiniteTransition(label = "recordingBlink")
                 val blinkAlpha by blinkTransition.animateFloat(
@@ -200,38 +159,6 @@ class GravarActivity : ComponentActivity() {
                     while (isRecording && !isPaused) {
                         viewModel.incrementCurrentPosition(100)
                         kotlinx.coroutines.delay(100)
-                    }
-                }
-
-                // Reset slider flags whenever recording starts or stops.
-                LaunchedEffect(isRecording) {
-                    if (!isRecording) {
-                        frozenRecordingDurationMs = null
-                        isDragging = false
-                        postSeekTargetMs = -1L
-                    }
-                }
-
-                // Reactive post-seek settlement:
-                //  • hasActiveAudio → true  : seek landed → clear hold so slider tracks
-                //                              uiState.currentPosition.
-                //  • hasActiveAudio → false  : playback ended during recording → unfreeze
-                //                              duration to resume live-edge mode.
-                LaunchedEffect(uiState.hasActiveAudio) {
-                    if (uiState.hasActiveAudio) {
-                        postSeekTargetMs = -1L      // seek confirmed, release hold
-                    } else if (isRecording) {
-                        frozenRecordingDurationMs = null   // back to live edge
-                    }
-                }
-
-                // Safety: if the audio engine never fires hasActiveAudio (e.g. seek
-                // during recording with no active playback), release the post-seek
-                // hold after a short timeout so the slider doesn't stay stuck.
-                LaunchedEffect(postSeekTargetMs) {
-                    if (postSeekTargetMs >= 0L) {
-                        delay(500L)
-                        postSeekTargetMs = -1L
                     }
                 }
 
@@ -368,111 +295,7 @@ class GravarActivity : ComponentActivity() {
 
                                         Spacer(modifier = Modifier.height(8.dp))
 
-                                        if ((uiState.hasActiveAudio || isRecording) && timelineDurationMs > 0L) {
-                                            Column(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(top = 4.dp),
-                                                horizontalAlignment = Alignment.CenterHorizontally
-                                            ) {
-                                                val maxSliderValue = maxOf(timelineDurationMs.toFloat(), 1f)
-                                                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                                                    Slider(
-                                                        // Pure derived value — no mutable var written by effects.
-                                                        value = timelinePositionMs.toFloat()
-                                                            .coerceIn(0f, maxSliderValue),
-                                                        onValueChange = { newValue: Float ->
-                                                            if (!isDragging) isDragging = true
-                                                            dragPositionMs = newValue.toLong()
-                                                                .coerceIn(0L, timelineDurationMs)
-                                                        },
-                                                        onValueChangeFinished = {
-                                                            val bounded = dragPositionMs
-                                                                .coerceIn(0L, timelineDurationMs)
-                                                            if (isRecording && !uiState.hasActiveAudio) {
-                                                                // Freeze duration before seeking so the bar
-                                                                // doesn't collapse when audio starts.
-                                                                frozenRecordingDurationMs =
-                                                                    uiState.recordingElapsedMs.coerceAtLeast(1L)
-                                                            }
-                                                            // Hold visual position until seek lands;
-                                                            // cleared reactively by LaunchedEffect(hasActiveAudio).
-                                                            postSeekTargetMs = bounded
-                                                            isDragging = false      // release drag immediately
-                                                            viewModel.seekTo(bounded)
-                                                        },
-                                                        valueRange = 0f..maxSliderValue,
-                                                        modifier = Modifier
-                                                            .fillMaxWidth()
-                                                            .height(36.dp),
-                                                        colors = SliderDefaults.colors(
-                                                            thumbColor = Color(0xFF0A7D77),
-                                                            activeTrackColor = Color(0xFF12B089),
-                                                            inactiveTrackColor = Color(0xFFB7E3DE)
-                                                        )
-                                                    )
-                                                }
 
-                                                Row(
-                                                    modifier = Modifier.fillMaxWidth(),
-                                                    horizontalArrangement = Arrangement.End
-                                                ) {
-                                                    Text(
-                                                        text = formatRemainingDuration(remainingMs),
-                                                        style = MaterialTheme.typography.bodySmall,
-                                                        color = Color(0xFF0B6B63)
-                                                    )
-                                                }
-
-                                                Spacer(modifier = Modifier.height(6.dp))
-
-                                                Row(
-                                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    OutlinedButton(
-                                                        onClick = {
-                                                            val rewindTo = (displayPositionMs - 15_000L)
-                                                                .coerceAtLeast(0L)
-                                                            if (isRecording && !uiState.hasActiveAudio) {
-                                                                frozenRecordingDurationMs =
-                                                                    uiState.recordingElapsedMs.coerceAtLeast(1L)
-                                                            }
-                                                            postSeekTargetMs = rewindTo
-                                                            viewModel.seekTo(rewindTo)
-                                                        },
-                                                        shape = RoundedCornerShape(18.dp)
-                                                    ) {
-                                                        Text("-15s")
-                                                    }
-
-                                                    OutlinedButton(
-                                                        onClick = {
-                                                            val liveDuration =
-                                                                uiState.recordingElapsedMs.coerceAtLeast(1L)
-                                                            val cap = if (isRecording) liveDuration
-                                                                      else timelineDurationMs
-                                                            val forwardTo = (displayPositionMs + 15_000L)
-                                                                .coerceAtMost(cap)
-                                                            if (isRecording) {
-                                                                if (forwardTo < liveDuration - 500L) {
-                                                                    // Still in past: freeze duration
-                                                                    frozenRecordingDurationMs = liveDuration
-                                                                } else {
-                                                                    // Reached live edge: resume auto-follow
-                                                                    frozenRecordingDurationMs = null
-                                                                }
-                                                            }
-                                                            postSeekTargetMs = forwardTo
-                                                            viewModel.seekTo(forwardTo)
-                                                        },
-                                                        shape = RoundedCornerShape(18.dp)
-                                                    ) {
-                                                        Text("+15s")
-                                                    }
-                                                }
-                                            }
-                                        }
                                     }
                                 }
                             }

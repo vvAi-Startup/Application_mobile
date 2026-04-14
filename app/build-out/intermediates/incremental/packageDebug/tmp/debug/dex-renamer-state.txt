@@ -1,4 +1,4 @@
-#Fri Apr 10 19:53:17 BRT 2026
+#Mon Apr 13 20:57:29 BRT 2026
 base.0=C\:\\Users\\fatec-dsm6\\Documents\\GitHub\\Application_mobile\\app\\build-out\\intermediates\\dex\\debug\\mergeExtDexDebug\\classes.dex
 base.1=C\:\\Users\\fatec-dsm6\\Documents\\GitHub\\Application_mobile\\app\\build-out\\intermediates\\dex\\debug\\mergeProjectDexDebug\\0\\classes.dex
 base.10=C\:\\Users\\fatec-dsm6\\Documents\\GitHub\\Application_mobile\\app\\build-out\\intermediates\\dex\\debug\\mergeProjectDexDebug\\9\\classes.dex
