@@ -88,13 +88,6 @@ fun TopBar(
             .padding(vertical = 12.dp)
             .height(64.dp)
     ) {
-        Text(
-            text = connectionStatusText,
-            color = connectionStatusColor,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.align(Alignment.Center)
-        )
-
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -158,6 +151,14 @@ fun TopBar(
                         expanded = showProfileMenu.value,
                         onDismissRequest = { showProfileMenu.value = false }
                     ) {
+                        DropdownMenuItem(
+                            text = { Text("Comparar Espectrogramas") },
+                            onClick = {
+                                showProfileMenu.value = false
+                                val intent = Intent(context, com.vvai.calmwave.SpectrogramComparisonActivity::class.java)
+                                context.startActivity(intent)
+                            }
+                        )
                         DropdownMenuItem(
                             text = { Text("Sair") },
                             onClick = {

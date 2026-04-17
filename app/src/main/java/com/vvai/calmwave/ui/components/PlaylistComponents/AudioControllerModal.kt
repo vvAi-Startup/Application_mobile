@@ -73,3 +73,9 @@ fun AudioControllerModal(
         }
     }
 }
+
+@androidx.compose.ui.tooling.preview.Preview
+@Composable
+fun AudioControllerModalPreview() {
+    AudioControllerModal(audioName = "Test Audio", showModal = true, onDismiss = {})
+}

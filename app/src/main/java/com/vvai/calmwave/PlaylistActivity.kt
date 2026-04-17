@@ -339,7 +339,7 @@ class PlaylistActivity : ComponentActivity() {
                                                 modifier = Modifier.fillMaxWidth()
                                             )
                                             if (searchText.isBlank()) {
-                                                Text(text = "Buscar", color = Color(0xFF9E9E9E), fontSize = 12.sp)
+                                                Text(text = "Buscar", color = Color.DarkGray, fontSize = 12.sp)
                                             }
                                         }
 
@@ -639,7 +639,7 @@ class PlaylistActivity : ComponentActivity() {
                                                             ) {
                                                                 Text(
                                                                     playlist.title + if (isCurrent) " (atual)" else "",
-                                                                    color = if (isCurrent) Color.Gray else Color.Unspecified
+                                                                    color = if (isCurrent) Color.DarkGray else Color.Unspecified
                                                                 )
                                                             }
                                                         }

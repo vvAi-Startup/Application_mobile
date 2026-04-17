@@ -252,3 +252,15 @@ fun PlaylistCard(
 private fun readableTextColorForCard(background: Color): Color {
     return if (background.luminance() > 0.62f) Color(0xFF1C1C1C) else Color.White
 }
+
+@androidx.compose.ui.tooling.preview.Preview
+@Composable
+fun PlaylistCardPreview() {
+    PlaylistCard(
+        title = "Rock Classics",
+        subtitle = "10 audios",
+        color = Color.Blue,
+        onClick = {}
+    )
+}
+

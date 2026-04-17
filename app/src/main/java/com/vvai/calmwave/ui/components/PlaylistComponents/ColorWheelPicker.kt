@@ -130,3 +130,9 @@ private fun updateColorFromOffset(
     val argb = android.graphics.Color.HSVToColor(hsv)
     onColorSelected(Color(argb))
 }
+
+@androidx.compose.ui.tooling.preview.Preview
+@Composable
+fun ColorWheelPickerPreview() {
+    ColorWheelPicker(selectedColor = Color.Blue, onColorSelected = {})
+}

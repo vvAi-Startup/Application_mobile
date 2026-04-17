@@ -49,3 +49,14 @@ fun PlaylistSelectionDialog(
         )
     }
 }
+
+@androidx.compose.ui.tooling.preview.Preview
+@Composable
+fun PlaylistSelectionDialogPreview() {
+    PlaylistSelectionDialog(
+        playlists = listOf("Rock", "Relaxing"),
+        current = "Rock",
+        onSelect = {},
+        onDismiss = {}
+    )
+}

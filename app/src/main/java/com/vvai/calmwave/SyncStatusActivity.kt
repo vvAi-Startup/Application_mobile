@@ -139,3 +139,12 @@ private fun SyncStatusScreen() {
         }
     }
 }
+
+@androidx.compose.ui.tooling.preview.Preview
+@Composable
+fun SyncStatusScreenPreview() {
+    androidx.compose.material3.Surface {
+        androidx.compose.material3.Text("SyncStatusScreen Preview")
+    }
+}
+

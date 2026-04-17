@@ -4,6 +4,8 @@
 .gradle/
 build/
 **/build/
+build-out/
+**/build-out/
 .kotlin/
 captures/
 .externalNativeBuild/

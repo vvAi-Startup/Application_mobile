@@ -17,7 +17,9 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
@@ -48,7 +50,10 @@ import androidx.compose.ui.tooling.preview.Preview
 import com.vvai.calmwave.ui.theme.CalmWaveTheme
 import com.vvai.calmwave.ui.components.WaveProgressBar
 import com.vvai.calmwave.util.resolveAudioDisplayName
+import com.vvai.calmwave.util.NetworkMonitor
+import com.vvai.calmwave.util.SyncStatusTracker
 import kotlinx.coroutines.delay
+import androidx.compose.ui.text.font.FontWeight
 
 @Composable
 fun BottomNavigationBar(selected: String, modifier: Modifier = Modifier) {
@@ -64,6 +69,16 @@ fun BottomNavigationBar(selected: String, modifier: Modifier = Modifier) {
     var currentTitle by remember { mutableStateOf("") }
     var isPlaying by remember { mutableStateOf(false) }
     var progress by remember { mutableFloatStateOf(0f) }
+
+    val networkMonitor = remember { NetworkMonitor.getInstance(context) }
+    val isOnline by networkMonitor.isOnline.collectAsState(initial = networkMonitor.isCurrentlyOnline())
+    val isSyncing by SyncStatusTracker.isSyncing.collectAsState()
+
+    val (connectionStatusText, connectionStatusColor) = when {
+        !isOnline -> "Offline" to Color(0xFFD32F2F)
+        isSyncing -> "Sincronizando" to Color(0xFFF9A825)
+        else -> "Online" to Color(0xFF2E7D32)
+    }
 
     fun refreshMiniPlayerState() {
         val item = player.currentMediaItem
@@ -233,6 +248,16 @@ fun BottomNavigationBar(selected: String, modifier: Modifier = Modifier) {
                 )
             }
         }
+
+        Text(
+            text = connectionStatusText,
+            color = connectionStatusColor,
+            fontSize = 8.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .offset(x = (-4).dp, y = (-12).dp)
+        )
 
         if (hasMedia) {
             Column(

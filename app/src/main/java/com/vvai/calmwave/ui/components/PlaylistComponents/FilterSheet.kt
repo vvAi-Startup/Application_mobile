@@ -97,3 +97,16 @@ fun FilterSheet(
         }
     )
 }
+
+@androidx.compose.ui.tooling.preview.Preview
+@Composable
+fun FilterSheetPreview() {
+    FilterSheet(
+        playlists = listOf("Rock", "Pop"),
+        initialOnlyFavorites = true,
+        initialPlaylist = "Rock",
+        onApply = { _, _ -> },
+        onDismiss = {}
+    )
+}
+

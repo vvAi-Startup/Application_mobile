@@ -8,6 +8,8 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -100,4 +102,13 @@ fun WaveProgressBar(
             )
         }
     }
+}
+
+@androidx.compose.ui.tooling.preview.Preview
+@Composable
+fun WaveProgressBarPreview() {
+    WaveProgressBar(
+        progress = 0.5f,
+        modifier = Modifier.height(25.dp)
+    )
 }

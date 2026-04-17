@@ -511,3 +511,21 @@ fun AudioPlayerScreen(
         }
     }
 }
+
+@androidx.compose.ui.tooling.preview.Preview
+@Composable
+fun AudioPlayerScreenPreview() {
+    AudioPlayerScreen(
+        uiState = MainViewModel.UiState(),
+        onRecordClicked = {},
+        onStopClicked = {},
+        onFileClicked = {},
+        onPreviousClicked = {},
+        onNextClicked = {},
+        onPauseResumeClicked = {},
+        onStopPlaybackClicked = {},
+        onSeek = {},
+        onRefreshFiles = {},
+        onSaveProcessedAudio = {}
+    )
+}

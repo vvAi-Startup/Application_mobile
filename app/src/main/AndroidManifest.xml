@@ -71,6 +71,11 @@
             android:theme="@style/Theme.CalmWave"
             android:screenOrientation="portrait" />
         <activity android:name=".PlaylistActivity" android:launchMode="singleTask" />
+        <activity
+            android:name=".SpectrogramComparisonActivity"
+            android:exported="false"
+            android:theme="@style/Theme.CalmWave"
+            android:screenOrientation="portrait" />
 
         <service
             android:name=".RecordingForegroundService"

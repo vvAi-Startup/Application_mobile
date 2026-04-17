@@ -235,7 +235,7 @@ private fun LoginScreen(
             }
 
             Spacer(modifier = Modifier.height(7.dp))
-                Text(text = "OU", color = Color.Gray, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                Text(text = "OU", color = Color.DarkGray, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
             Spacer(modifier = Modifier.height(3.dp))
 
             Text(

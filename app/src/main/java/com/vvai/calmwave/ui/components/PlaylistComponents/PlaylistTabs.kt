@@ -33,3 +33,9 @@ fun PlaylistTabs(
         }
     }
 }
+
+@androidx.compose.ui.tooling.preview.Preview
+@Composable
+fun PlaylistTabsPreview() {
+    PlaylistTabs(selectedTab = "Áudios", onTabSelected = {})
+}
