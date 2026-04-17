@@ -27,8 +27,8 @@
 - [Como o aplicativo funciona](#-como-o-aplicativo-funciona)
 - [Mapa rápido de telas (dev)](#-mapa-rápido-de-telas-dev)
 - [Onde encontrar mais informações](#-onde-encontrar-mais-informações)
-- [Próximos passos](#-próximos-passos)
-- [Licença e contato](#-licença-e-contato)
+- [Licença e Propriedade](#-licença-e-propriedade)
+- [Agradecimentos](#-agradecimentos)
 
 ---
 
@@ -46,38 +46,16 @@ O aplicativo foi desenvolvido pensando em ser simples e fácil de usar, com uma 
 ### ✨ Por que usar o CalmWave?
 
 - 🎙️ **Gravação Crystal Clear** - Áudio limpo sem ruídos indesejados
-- 🌐 **Funciona Offline** - Não precisa de internet para limpar o áudio
+- 🌐 **Offline First** - IA e espectrogramas gerados totalmente sem internet
 - 📱 **Interface Amigável** - Fácil de usar para todas as idades
+- 🔍 **Comparação Espectral** - Visualize com seus próprios olhos a potência da limpeza através de gráficos dinâmicos
 - 🎵 **Controle Total** - Ajuste a velocidade de reprodução, pule trechos e mais
 - 📂 **Organização Simples** - Crie pastas para organizar seus áudios
-- 🎨 **Visual Bonito** - Design moderno com cores e animações suaves
+- ☁️ **Sincronia Silenciosa** - Usa offline? Sem problema, ele sincroniza progresso em background quando o Wifi conectar
 
 ---
 
 ## 🚀 O que o aplicativo faz
-
----
-
-## 🧭 Mapa rápido de telas (dev)
-
-Para facilitar manutenção e mudanças pontuais em UI/fluxo:
-
-- **Splash / entrada**: app/src/main/java/com/vvai/calmwave/SplashActivity.kt
-- **Tela principal (Início)**: app/src/main/java/com/vvai/calmwave/PrincipalActivity.kt
-- **Tela de gravação**: app/src/main/java/com/vvai/calmwave/GravarActivity.kt
-- **Tela de playlists/áudios**: app/src/main/java/com/vvai/calmwave/PlaylistActivity.kt
-- **Tela utilitária de player/diagnóstico**: app/src/main/java/com/vvai/calmwave/MainActivity.kt
-
-Camadas de suporte principais:
-
-- **Estado e regras da gravação/processamento**: app/src/main/java/com/vvai/calmwave/MainViewModel.kt
-- **Gravação WAV por chunks**: app/src/main/java/com/vvai/calmwave/WavRecorder.kt
-- **Processamento local offline (denoise)**: app/src/main/java/com/vvai/calmwave/LocalAudioDenoiser.kt
-- **Reprodução/streaming local de áudio**: app/src/main/java/com/vvai/calmwave/AudioService.kt
-- **Cache local + sync quando online**: app/src/main/java/com/vvai/calmwave/data/repository/AnalyticsRepository.kt
-- **Sincronização em background (WorkManager)**: app/src/main/java/com/vvai/calmwave/workers/SyncAnalyticsWorker.kt
-
-> Regra de arquitetura mantida: gravação/processamento continuam funcionando offline em tempo real, com cache local e sincronização para API quando houver conectividade.
 
 ### 1. 🎙️ Gravar Áudio com Qualidade
 
@@ -141,6 +119,15 @@ Tudo pensado para facilitar seu uso:
 - **Fácil navegação** - Menu na parte de baixo da tela
 - **Ícones claros** - Tudo identificado de forma visual
 
+### 7. 🔍 Comparação Visual (Espectrogramas)
+
+Veja com seus próprios olhos a diferença matemática que a limpeza de ruídos faz:
+
+- **Visão Real das Frequências** - Espectrograma em tempo real de seus áudios
+- **Comparação Lado a Lado** - Veja a renderização termal "antes/depois" do áudio processado
+- **Cálculo Offline** - Processador digital de sinal (STFT) 100% nativo
+- **Privacidade Total** - Nenhuma imagem ou áudio de comparação vai para a internet
+
 ---
 
 ## 🛠️ Ferramentas e tecnologias usadas
@@ -162,13 +149,14 @@ O CalmWave foi construído usando tecnologias modernas e confiáveis. Aqui está
 - **AudioTrack** - Tecnologia nativa do Android para tocar som em tempo real
 - **WavRecorder** - Nosso próprio sistema de gravação em alta qualidade
 
-#### 🤖 Inteligência Artificial
+#### 🤖 Inteligência Artificial e Processamento
 - **ONNX Runtime** - Motor que executa a IA de limpeza de ruído no celular
 - **UNet Denoiser** - Modelo de IA especializado em remover ruídos
+- **STFT (Processador Matemático)** - Algoritmo local em Kotlin para transformar fatias de áudio em gráficos espectrais térmicos
 
-#### 🌐 Comunicação (quando necessário)
-- **OkHttp** - Sistema para comunicação com servidores quando necessário
-- **WebSocket** - Tecnologia para enviar e receber dados em tempo real
+#### 🌐 Comunicação e Background
+- **OkHttp e WebSocket** - Sistema para comunicação pontual com servidores
+- **WorkManager** - Orquestrador de threads invisíveis que lida com filas e envio das estatísticas offline
 
 ---
 
@@ -324,7 +312,7 @@ Todas essas permissões são solicitadas automaticamente quando você abre o app
 
 ---
 
-## � Como o aplicativo funciona
+## 🧠 Como o aplicativo funciona
 
 ### Uma explicação simples da estrutura
 
@@ -368,6 +356,8 @@ O CalmWave é organizado em "camadas", como um bolo de três andares. Cada camad
   - Tela de Gravação - Onde você grava áudios
   - Tela de Pastas - Onde organiza seus áudios
   - Tela de Reprodução - Onde ouve os áudios
+  - Tela de Sincronização - Gerenciamento transparente e diagnósticos de rede
+  - Tela Comparativa Espectral - Observação clínica dos espectrogramas paralelos
   - Tela de Abertura - Primeira tela quando abre o app
 
 - **Lógica Central (MainViewModel)**:
@@ -376,10 +366,38 @@ O CalmWave é organizado em "camadas", como um bolo de três andares. Cada camad
   - Coordena as ações
 
 - **Sistemas de Ação**:
-  - **AudioService** - Cuida de tocar áudios e limpar ruídos
-  - **WavRecorder** - Responsável por gravar
-  - **LocalAudioDenoiser** - Limpa os ruídos usando IA
-  - **ExoPlayerAudioPlayer** - Toca os áudios com qualidade
+  - **AudioService** - Cuida de tocar áudios localmente e streaming
+  - **WavRecorder** - Responsável por captar blocos de 16-bits
+  - **LocalAudioDenoiser** - Faz a dedução anti-ruído no processador (ONNX)
+  - **SpectrogramGenerator** - Fornece arrays e Bitmaps de Fourier
+  - **SyncAnalyticsWorker** - Agenda os envios de estatística quando conveniente
+
+---
+
+---
+
+## 🧭 Mapa rápido de telas (dev)
+
+Para facilitar manutenção e mudanças pontuais em UI/fluxo:
+
+- **Splash / entrada**: `app/src/main/java/com/vvai/calmwave/SplashActivity.kt`
+- **Tela principal (Início)**: `app/src/main/java/com/vvai/calmwave/MainActivity.kt`
+- **Tela de gravação**: `app/src/main/java/com/vvai/calmwave/GravarActivity.kt`
+- **Tela de playlists/áudios**: `app/src/main/java/com/vvai/calmwave/PlaylistActivity.kt`
+- **Tela utilitária de player/diagnóstico**: `app/src/main/java/com/vvai/calmwave/MainActivity.kt`
+- **Tela de comparação espectral**: `app/src/main/java/com/vvai/calmwave/SpectrogramComparisonActivity.kt`
+- **Tela de status e background sync**: `app/src/main/java/com/vvai/calmwave/SyncStatusActivity.kt`
+
+Camadas de suporte principais:
+
+- **Estado e regras da gravação/processamento**: `app/src/main/java/com/vvai/calmwave/MainViewModel.kt`
+- **Gravação WAV por chunks**: `app/src/main/java/com/vvai/calmwave/WavRecorder.kt`
+- **Processamento local offline (denoise)**: `app/src/main/java/com/vvai/calmwave/LocalAudioDenoiser.kt`
+- **Reprodução/streaming local de áudio**: `app/src/main/java/com/vvai/calmwave/AudioService.kt`
+- **Cache local + sync quando online**: `app/src/main/java/com/vvai/calmwave/data/repository/AnalyticsRepository.kt`
+- **Sincronização em background (WorkManager)**: `app/src/main/java/com/vvai/calmwave/workers/SyncAnalyticsWorker.kt`
+
+> Regra de arquitetura mantida: gravação/processamento continuam funcionando offline em tempo real, com cache local e sincronização para API quando houver conectividade.
 
 ---
 
@@ -405,14 +423,19 @@ Se você quiser entender mais sobre como o CalmWave funciona, temos vários docu
   - Como o aplicativo limpa áudio sem internet
   - Detalhes sobre a inteligência artificial usada
 
+- **[espectrograma_offline.md](espectrograma_offline.md)** 
+  - Visão geral da engenharia em Kotlin para renderizar Espectrogramas Reais off-device (FFT/STFT)
+
 ### Versão Atual: 1.0.0 ✅
 
 O que já funciona agora:
 - ✅ Gravar áudios com qualidade
-- ✅ Limpar ruídos automaticamente (com e sem internet)
-- ✅ Organizar em pastas
-- ✅ Ouvir com controles avançados
-- ✅ Interface bonita e fácil de usar
+- ✅ Limpar ruídos automaticamente na Nuvem ou via Processador Neural Próprio
+- ✅ Mapear Pastas (Playlists independentes via Room/Prefs)
+- ✅ Visualização Espectral Offline Completa (Fast Fourier Transform)
+- ✅ Mecanismo WorkManager em 2º plano para dados offline
+- ✅ Ouvir com waveforms animadas
+- ✅ Interface bonita e acessível
 
 
 
